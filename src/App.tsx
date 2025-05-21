@@ -10,6 +10,9 @@ import DepositRegister from './pages/Deposit/Register';
 import DepositDashboard from './pages/Deposit/Dashboard';
 import CollectorDashboard from './pages/Collector/Dashboard';
 import CollectorRoutes from './pages/Collector/Routes';
+import ClientDashboard from './pages/Client/Dashboard';
+import ClientRequests from './pages/Client/Requests';
+import NewRequest from './pages/Client/NewRequest';
 
 function App() {
   return (
@@ -26,6 +29,9 @@ function App() {
                   <Route path="/deposit/dashboard" element={<DepositDashboard />} />
                   <Route path="/collector/dashboard" element={<CollectorDashboard />} />
                   <Route path="/collector/routes" element={<CollectorRoutes />} />
+                  <Route path="/client/dashboard" element={<ClientDashboard />} />
+                  <Route path="/client/requests" element={<ClientRequests />} />
+                  <Route path="/client/new-request" element={<NewRequest />} />
                 </Routes>
               </main>
               <Footer />
