@@ -61,20 +61,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const loadUser = async (authUser: SupabaseUser) => {
     try {
       // First verify the user exists
-      const { count, error: countError } = await supabase
-        .from('users')
-        .select('*', { count: 'exact', head: true })
-        .eq('id', authUser.id);
-
-      if (countError) throw countError;
-      
-      if (count === 0) {
-        console.error('User record not found in database');
-        await signOut(); // Sign out if no user record exists
-        throw new Error('User profile not found. Please contact support.');
-      }
-
-      // Now fetch the user data
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
@@ -82,8 +68,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .single();
 
       if (error) {
-        console.error('Error fetching user data:', error);
-        throw new Error('Failed to load user profile');
+        if (error.code === 'PGRST116') { // No rows returned
+          console.error('User record not found in database');
+          await signOut();
+          throw new Error('User profile not found. Please contact support.');
+        }
+        throw error;
       }
 
       if (!userData) {
@@ -125,7 +115,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('Login failed: No user data returned');
       }
 
-      // Attempt to load user data immediately after successful auth
+      // Wait for a short delay to ensure the user profile is available
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Attempt to load user data after the delay
       await loadUser(data.user);
     } catch (error) {
       console.error('Error signing in:', error);
@@ -143,6 +136,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (signUpError) throw signUpError;
       if (!user) throw new Error('User creation failed');
 
+      // Create user profile
       const { error: profileError } = await supabase
         .from('users')
         .insert({
@@ -152,8 +146,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
           type: role
         });
 
-      if (profileError) throw profileError;
+      if (profileError) {
+        // If profile creation fails, clean up the auth user
+        await supabase.auth.admin.deleteUser(user.id);
+        throw profileError;
+      }
 
+      // If user is a collector, create collector profile
       if (role === 'collector') {
         const { error: collectorError } = await supabase
           .from('collectors')
@@ -165,8 +164,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
             supported_waste_types: ['furniture', 'household']
           });
 
-        if (collectorError) throw collectorError;
+        if (collectorError) {
+          // If collector profile creation fails, clean up both auth user and user profile
+          await supabase.auth.admin.deleteUser(user.id);
+          await supabase.from('users').delete().eq('id', user.id);
+          throw collectorError;
+        }
       }
+
+      // Wait for a short delay to ensure all database operations are complete
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
     } catch (error) {
       console.error('Error signing up:', error);
       throw error;
