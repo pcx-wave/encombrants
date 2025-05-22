@@ -16,7 +16,7 @@ export interface Database {
           email: string
           phone: string | null
           address: string | null
-          type: 'client' | 'collector'
+          type: 'client' | 'collector' | 'deposit'
           created_at: string | null
         }
         Insert: {
@@ -25,7 +25,7 @@ export interface Database {
           email: string
           phone?: string | null
           address?: string | null
-          type: 'client' | 'collector'
+          type: 'client' | 'collector' | 'deposit'
           created_at?: string | null
         }
         Update: {
@@ -34,7 +34,7 @@ export interface Database {
           email?: string
           phone?: string | null
           address?: string | null
-          type?: 'client' | 'collector'
+          type?: 'client' | 'collector' | 'deposit'
           created_at?: string | null
         }
       }
