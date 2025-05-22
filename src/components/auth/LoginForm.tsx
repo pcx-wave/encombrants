@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { LogIn } from 'lucide-react';
 import Button from '../common/Button';
 import { useAuth } from '../../contexts/AuthContext';
+import { testAccounts } from '../../data/testAccounts';
 
 const LoginForm: React.FC = () => {
   const navigate = useNavigate();
@@ -31,11 +32,14 @@ const LoginForm: React.FC = () => {
     }
   };
 
+  const handleTestAccountClick = (email: string, password: string) => {
+    setEmail(email);
+    setPassword(password);
+  };
+
   return (
     <div className="w-full max-w-md">
-      <form onSubmit={handleSubmit} className="space-y-6 bg-white p-8 rounded-lg shadow-md">
-        <h2 className="text-2xl font-bold text-gray-900 text-center mb-6">Sign In</h2>
-        
+      <form onSubmit={handleSubmit} className="space-y-6">
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md text-sm">
             {error}
@@ -80,10 +84,23 @@ const LoginForm: React.FC = () => {
           Sign In
         </Button>
 
-        <div className="text-sm text-center mt-4">
-          <a href="/signup" className="text-emerald-600 hover:text-emerald-500">
-            Don't have an account? Sign up
-          </a>
+        {/* Test Accounts Quick Access */}
+        <div className="mt-8 pt-6 border-t border-gray-200">
+          <h3 className="text-sm font-medium text-gray-900">Test Accounts</h3>
+          <div className="mt-4 space-y-4">
+            {Object.entries(testAccounts).map(([role, account]) => (
+              <button
+                key={role}
+                type="button"
+                onClick={() => handleTestAccountClick(account.email, account.password)}
+                className="w-full p-3 text-left bg-gray-50 hover:bg-gray-100 rounded-md transition-colors"
+              >
+                <div className="font-medium text-gray-900 capitalize">{role}</div>
+                <div className="text-sm text-gray-600">Email: {account.email}</div>
+                <div className="text-sm text-gray-600">Password: {account.password}</div>
+              </button>
+            ))}
+          </div>
         </div>
       </form>
     </div>

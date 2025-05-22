@@ -38,7 +38,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
-          await loadUser(session.user);
+          try {
+            await loadUser(session.user);
+          } catch (error) {
+            console.error('Error in auth state change:', error);
+            setCurrentUser(null);
+          }
         } else {
           setCurrentUser(null);
         }
@@ -48,7 +53,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
-        loadUser(session.user);
+        loadUser(session.user).catch((error) => {
+          console.error('Error loading initial session:', error);
+          setCurrentUser(null);
+        });
       }
       setIsLoading(false);
     });
@@ -58,9 +66,8 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, []);
 
-  const loadUser = async (authUser: SupabaseUser) => {
+  const loadUser = async (authUser: SupabaseUser, retryCount = 3): Promise<void> => {
     try {
-      // First verify the user exists
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
@@ -68,17 +75,16 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .single();
 
       if (error) {
-        if (error.code === 'PGRST116') { // No rows returned
-          console.error('User record not found in database');
-          await signOut();
-          throw new Error('User profile not found. Please contact support.');
+        if (error.code === 'PGRST116' && retryCount > 0) {
+          // Wait for 1 second before retrying
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          return loadUser(authUser, retryCount - 1);
         }
         throw error;
       }
 
       if (!userData) {
-        console.error('No user data returned');
-        throw new Error('User profile not found');
+        throw new Error('User record not found in database');
       }
 
       setCurrentUser({
@@ -106,20 +112,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (error) {
         if (error.message === 'Invalid login credentials') {
-          throw new Error('Invalid email or password. Please try again.');
+          throw new Error('Invalid email or password');
         }
-        throw new Error(`Login failed: ${error.message}`);
+        throw error;
       }
 
       if (!data.user) {
-        throw new Error('Login failed: No user data returned');
+        throw new Error('No user data returned from authentication');
       }
 
       // Wait for a short delay to ensure the user profile is available
       await new Promise(resolve => setTimeout(resolve, 1000));
 
-      // Attempt to load user data after the delay
-      await loadUser(data.user);
+      try {
+        await loadUser(data.user);
+      } catch (error) {
+        if (error instanceof Error) {
+          throw new Error('User profile not found. Please contact support.');
+        }
+        throw error;
+      }
     } catch (error) {
       console.error('Error signing in:', error);
       throw error;
@@ -136,45 +148,46 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       if (signUpError) throw signUpError;
       if (!user) throw new Error('User creation failed');
 
-      // Create user profile
-      const { error: profileError } = await supabase
-        .from('users')
-        .insert({
-          id: user.id,
-          email,
-          name,
-          type: role
-        });
-
-      if (profileError) {
-        // If profile creation fails, clean up the auth user
-        await supabase.auth.admin.deleteUser(user.id);
-        throw profileError;
-      }
-
-      // If user is a collector, create collector profile
-      if (role === 'collector') {
-        const { error: collectorError } = await supabase
-          .from('collectors')
+      try {
+        const { error: profileError } = await supabase
+          .from('users')
           .insert({
             id: user.id,
-            vehicle_type: 'van',
-            vehicle_capacity_volume: 10,
-            vehicle_capacity_weight: 1000,
-            supported_waste_types: ['furniture', 'household']
+            email,
+            name,
+            type: role
           });
 
-        if (collectorError) {
-          // If collector profile creation fails, clean up both auth user and user profile
+        if (profileError) {
           await supabase.auth.admin.deleteUser(user.id);
-          await supabase.from('users').delete().eq('id', user.id);
-          throw collectorError;
+          throw profileError;
         }
+
+        if (role === 'collector') {
+          const { error: collectorError } = await supabase
+            .from('collectors')
+            .insert({
+              id: user.id,
+              vehicle_type: 'van',
+              vehicle_capacity_volume: 10,
+              vehicle_capacity_weight: 1000,
+              supported_waste_types: ['furniture', 'household']
+            });
+
+          if (collectorError) {
+            await supabase.auth.admin.deleteUser(user.id);
+            await supabase.from('users').delete().eq('id', user.id);
+            throw collectorError;
+          }
+        }
+
+        // Wait for a short delay to ensure all database operations are complete
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      } catch (error) {
+        console.error('Error creating user profile:', error);
+        await supabase.auth.admin.deleteUser(user.id);
+        throw error;
       }
-
-      // Wait for a short delay to ensure all database operations are complete
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
     } catch (error) {
       console.error('Error signing up:', error);
       throw error;
