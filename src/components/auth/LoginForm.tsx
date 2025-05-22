@@ -32,51 +32,61 @@ const LoginForm: React.FC = () => {
   };
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-6">
-      {error && (
-        <div className="bg-red-50 text-red-700 p-3 rounded-md text-sm">
-          {error}
+    <div className="w-full max-w-md">
+      <form onSubmit={handleSubmit} className="space-y-6 bg-white p-8 rounded-lg shadow-md">
+        <h2 className="text-2xl font-bold text-gray-900 text-center mb-6">Sign In</h2>
+        
+        {error && (
+          <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-md text-sm">
+            {error}
+          </div>
+        )}
+
+        <div>
+          <label htmlFor="email" className="block text-sm font-medium text-gray-700">
+            Email
+          </label>
+          <input
+            id="email"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+            required
+          />
         </div>
-      )}
 
-      <div>
-        <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-          Email
-        </label>
-        <input
-          id="email"
-          type="email"
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
-          required
-        />
-      </div>
+        <div>
+          <label htmlFor="password" className="block text-sm font-medium text-gray-700">
+            Password
+          </label>
+          <input
+            id="password"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
+            required
+          />
+        </div>
 
-      <div>
-        <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-          Password
-        </label>
-        <input
-          id="password"
-          type="password"
-          value={password}
-          onChange={(e) => setPassword(e.target.value)}
-          className="mt-1 block w-full rounded-md border-gray-300 shadow-sm focus:border-emerald-500 focus:ring-emerald-500"
-          required
-        />
-      </div>
+        <Button
+          type="submit"
+          fullWidth
+          size="lg"
+          isLoading={isLoading}
+          leftIcon={<LogIn className="w-5 h-5" />}
+        >
+          Sign In
+        </Button>
 
-      <Button
-        type="submit"
-        fullWidth
-        size="lg"
-        isLoading={isLoading}
-        leftIcon={<LogIn className="w-5 h-5" />}
-      >
-        Sign In
-      </Button>
-    </form>
+        <div className="text-sm text-center mt-4">
+          <a href="/signup" className="text-emerald-600 hover:text-emerald-500">
+            Don't have an account? Sign up
+          </a>
+        </div>
+      </form>
+    </div>
   );
 };
 

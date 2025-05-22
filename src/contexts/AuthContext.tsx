@@ -60,28 +60,50 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const loadUser = async (authUser: SupabaseUser) => {
     try {
+      // First verify the user exists
+      const { count, error: countError } = await supabase
+        .from('users')
+        .select('*', { count: 'exact', head: true })
+        .eq('id', authUser.id);
+
+      if (countError) throw countError;
+      
+      if (count === 0) {
+        console.error('User record not found in database');
+        await signOut(); // Sign out if no user record exists
+        throw new Error('User profile not found. Please contact support.');
+      }
+
+      // Now fetch the user data
       const { data: userData, error } = await supabase
         .from('users')
         .select('*')
         .eq('id', authUser.id)
         .single();
 
-      if (error) throw error;
-
-      if (userData) {
-        setCurrentUser({
-          id: userData.id,
-          email: userData.email,
-          name: userData.name,
-          role: userData.type,
-          phone: userData.phone || undefined,
-          address: userData.address || undefined,
-          createdAt: new Date(userData.created_at || Date.now())
-        });
+      if (error) {
+        console.error('Error fetching user data:', error);
+        throw new Error('Failed to load user profile');
       }
+
+      if (!userData) {
+        console.error('No user data returned');
+        throw new Error('User profile not found');
+      }
+
+      setCurrentUser({
+        id: userData.id,
+        email: userData.email,
+        name: userData.name,
+        role: userData.type,
+        phone: userData.phone || undefined,
+        address: userData.address || undefined,
+        createdAt: new Date(userData.created_at || Date.now())
+      });
     } catch (error) {
       console.error('Error loading user:', error);
       setCurrentUser(null);
+      throw error;
     }
   };
 
@@ -93,12 +115,18 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
 
       if (error) {
-        throw new Error(error.message);
+        if (error.message === 'Invalid login credentials') {
+          throw new Error('Invalid email or password. Please try again.');
+        }
+        throw new Error(`Login failed: ${error.message}`);
       }
 
       if (!data.user) {
-        throw new Error('No user data returned after successful login');
+        throw new Error('Login failed: No user data returned');
       }
+
+      // Attempt to load user data immediately after successful auth
+      await loadUser(data.user);
     } catch (error) {
       console.error('Error signing in:', error);
       throw error;
