@@ -18,10 +18,23 @@ const LoginForm: React.FC = () => {
     setIsLoading(true);
 
     try {
-      await signIn(email, password);
+      const { error: signInError } = await signIn(email, password);
+      
+      if (signInError) {
+        if (signInError.message.includes('Invalid login credentials')) {
+          setError('The email or password you entered is incorrect. Please try again.');
+        } else if (signInError.message.includes('Email not confirmed')) {
+          setError('Please verify your email address before logging in.');
+        } else {
+          setError('An error occurred during login. Please try again.');
+        }
+        return;
+      }
+
       navigate('/');
     } catch (err) {
-      setError('Invalid email or password');
+      console.error('Login error:', err);
+      setError('An unexpected error occurred. Please try again later.');
     } finally {
       setIsLoading(false);
     }
