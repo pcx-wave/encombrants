@@ -6,6 +6,8 @@ import { RouteProvider } from './contexts/RouteContext';
 import Header from './components/common/Header';
 import Footer from './components/common/Footer';
 import HomePage from './pages/HomePage';
+import LoginPage from './pages/auth/LoginPage';
+import SignUpPage from './pages/auth/SignUpPage';
 import DepositRegister from './pages/Deposit/Register';
 import DepositDashboard from './pages/Deposit/Dashboard';
 import CollectorDashboard from './pages/Collector/Dashboard';
@@ -25,6 +27,8 @@ function App() {
               <main className="flex-grow">
                 <Routes>
                   <Route path="/" element={<HomePage />} />
+                  <Route path="/login" element={<LoginPage />} />
+                  <Route path="/signup" element={<SignUpPage />} />
                   <Route path="/deposit/register" element={<DepositRegister />} />
                   <Route path="/deposit/dashboard" element={<DepositDashboard />} />
                   <Route path="/collector/dashboard" element={<CollectorDashboard />} />
