@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { Link } from 'react-router-dom';
 import { MapPin, Package, Clock, Euro } from 'lucide-react';
 import Card from '../../components/common/Card';
@@ -6,12 +6,31 @@ import Button from '../../components/common/Button';
 import WasteTypeIcon from '../../components/common/WasteTypeIcon';
 import { useAuth } from '../../contexts/AuthContext';
 import { useRequest } from '../../contexts/RequestContext';
+import { PickupRequest } from '../../types';
 
 const ClientRequests: React.FC = () => {
   const { currentUser } = useAuth();
   const { getRequestsByClientId } = useRequest();
+  const [requests, setRequests] = useState<PickupRequest[]>([]);
 
-  const requests = currentUser?.id ? getRequestsByClientId(currentUser.id) : [];
+  useEffect(() => {
+    const fetchRequests = async () => {
+      try {
+        const response = await fetch('/api/requests');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        setRequests(data);
+      } catch (error) {
+        console.error('Failed to fetch requests:', error);
+      }
+    };
+
+    fetchRequests();
+  }, []);
+
+  const userRequests = currentUser?.id ? requests.filter(request => request.clientId === currentUser.id) : [];
 
   return (
     <div className="container mx-auto px-4 py-8">
@@ -23,7 +42,7 @@ const ClientRequests: React.FC = () => {
       </div>
 
       <div className="space-y-6">
-        {requests.map((request) => (
+        {userRequests.map((request) => (
           <Card key={request.id} className="overflow-hidden">
             <div className="flex flex-col md:flex-row md:items-center justify-between">
               {/* Request Details */}
