@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User as SupabaseUser } from '@supabase/supabase-js';
+import { User as SupabaseUser, AuthError } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
 import { AuthUser, UserRole } from '../types/auth';
 
@@ -94,7 +94,13 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         password
       });
 
-      if (signUpError) throw signUpError;
+      if (signUpError) {
+        if (signUpError.message.includes('already registered')) {
+          throw new Error('This email is already registered. Please try logging in instead.');
+        }
+        throw signUpError;
+      }
+      
       if (!user) throw new Error('User creation failed');
 
       // Create user profile
@@ -131,15 +137,35 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
   const signIn = async (email: string, password: string) => {
     try {
-      const { error } = await supabase.auth.signInWithPassword({
+      const { data, error } = await supabase.auth.signInWithPassword({
         email,
         password
       });
 
-      if (error) throw error;
+      if (error) {
+        // Handle specific error cases
+        if (error.message === 'Invalid login credentials') {
+          throw new Error('Invalid email or password. Please check your credentials and try again.');
+        } else if (error.message.includes('Email not confirmed')) {
+          throw new Error('Please verify your email address before logging in.');
+        } else if (error.message.includes('rate limit')) {
+          throw new Error('Too many login attempts. Please try again later.');
+        } else {
+          throw new Error('An error occurred during sign in. Please try again.');
+        }
+      }
+
+      if (!data.user) {
+        throw new Error('No user data returned after successful login.');
+      }
     } catch (error) {
-      console.error('Error signing in:', error);
-      throw error;
+      if (error instanceof AuthError) {
+        throw new Error(error.message);
+      } else if (error instanceof Error) {
+        throw error;
+      } else {
+        throw new Error('An unexpected error occurred during sign in.');
+      }
     }
   };
 
