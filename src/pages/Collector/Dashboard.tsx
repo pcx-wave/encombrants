@@ -1,4 +1,5 @@
-import React, { useState } from 'react';
+// src/pages/Collector/Dashboard.tsx
+import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Package, TrendingUp, Route as RouteIcon } from 'lucide-react';
 import Card from '../../components/common/Card';
@@ -7,16 +8,35 @@ import WasteTypeIcon from '../../components/common/WasteTypeIcon';
 import { PickupRequest } from '../../types';
 import { useRequest } from '../../contexts/RequestContext';
 import { useAuth } from '../../contexts/AuthContext';
+import Map from '../../components/Map';
 
 const CollectorDashboard: React.FC = () => {
   const navigate = useNavigate();
   const { currentUser } = useAuth();
   const { getCompatibleRequestsByCollectorId } = useRequest();
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
+    const [compatibleRequests, setCompatibleRequests] = useState<PickupRequest[]>([]);
 
-  const compatibleRequests = currentUser?.id 
-    ? getCompatibleRequestsByCollectorId(currentUser.id)
-    : [];
+
+    useEffect(() => {
+        const fetchRequests = async () => {
+            try {
+                const response = await fetch('/api/requests');
+                if (!response.ok) {
+                    throw new Error(`HTTP error! status: ${response.status}`);
+                }
+                const data = await response.json();
+                // Assuming the backend returns all requests, filter them here
+                const filteredRequests = data.filter((request: PickupRequest) => request.status === 'pending');
+                setCompatibleRequests(filteredRequests);
+            } catch (error) {
+                console.error('Failed to fetch requests:', error);
+            }
+        };
+
+        fetchRequests();
+    }, []);
+
 
   const handleRequestSelection = (requestId: string) => {
     setSelectedRequests(prev =>
@@ -75,11 +95,13 @@ const CollectorDashboard: React.FC = () => {
       </div>
 
       {/* Available Requests */}
-      <Card 
-        title="Available Requests" 
+      <Card
+        title="Available Requests"
         subtitle="Select multiple requests to generate an optimized route"
         className="mb-8"
       >
+        <Map requests={compatibleRequests} />
+
         <div className="space-y-4">
           {compatibleRequests.map((request: PickupRequest) => (
             <div
