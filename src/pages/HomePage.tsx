@@ -1,11 +1,11 @@
 import React from 'react';
 import { Link } from 'react-router-dom';
-import { Truck, Package, BarChart3, MapPin, RotateCcw, CalendarClock } from 'lucide-react';
+import { Truck, Package, BarChart3, MapPin, RotateCcw, CalendarClock, Building } from 'lucide-react';
 import Button from '../components/common/Button';
 import { useAuth } from '../contexts/AuthContext';
 
 const HomePage: React.FC = () => {
-  const { isAuthenticated, isClient, isCollector } = useAuth();
+  const { isAuthenticated, isClient, isCollector, isDeposit } = useAuth();
 
   return (
     <div className="flex flex-col min-h-screen">
@@ -23,7 +23,13 @@ const HomePage: React.FC = () => {
               </p>
               <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 pt-4">
                 {isAuthenticated ? (
-                  <Link to={isClient ? "/client/dashboard" : "/collector/dashboard"}>
+                  <Link to={
+                    isClient 
+                      ? "/client/dashboard" 
+                      : isCollector 
+                      ? "/collector/dashboard"
+                      : "/deposit/dashboard"
+                  }>
                     <Button 
                       size="lg" 
                       rightIcon={<BarChart3 className="ml-2" />}
@@ -32,7 +38,7 @@ const HomePage: React.FC = () => {
                     </Button>
                   </Link>
                 ) : (
-                  <>
+                  <div className="flex flex-col sm:flex-row gap-4">
                     <Link to="/client/new-request">
                       <Button 
                         size="lg" 
@@ -51,7 +57,17 @@ const HomePage: React.FC = () => {
                         Join as Collector
                       </Button>
                     </Link>
-                  </>
+                    <Link to="/deposit/register">
+                      <Button 
+                        size="lg" 
+                        variant="outline" 
+                        className="bg-opacity-20 backdrop-blur-sm bg-white text-white border-white hover:bg-white hover:bg-opacity-30"
+                        rightIcon={<Building className="ml-2" />}
+                      >
+                        Register Deposit Point
+                      </Button>
+                    </Link>
+                  </div>
                 )}
               </div>
             </div>
@@ -72,8 +88,8 @@ const HomePage: React.FC = () => {
           <div className="text-center mb-12">
             <h2 className="text-3xl font-bold text-gray-800">How It Works</h2>
             <p className="mt-4 text-lg text-gray-600 max-w-3xl mx-auto">
-              Our intelligent system connects waste producers with collectors and optimizes routes 
-              to save time, money, and reduce environmental impact.
+              Our intelligent system connects waste producers with collectors and disposal points 
+              to optimize collection routes and ensure proper waste management.
             </p>
           </div>
 
@@ -140,33 +156,33 @@ const HomePage: React.FC = () => {
               </div>
             </div>
 
-            {/* Route Optimization */}
+            {/* For Deposit Points */}
             <div className="bg-white p-8 rounded-lg shadow-md transition-transform hover:scale-105">
               <div className="text-emerald-600 mb-4">
-                <RotateCcw className="w-12 h-12" />
+                <Building className="w-12 h-12" />
               </div>
-              <h3 className="text-xl font-semibold text-gray-800 mb-3">Smart Route Optimization</h3>
-              <ul className="space-y-4 text-gray-600">
+              <h3 className="text-xl font-semibold text-gray-800 mb-3">For Deposit Points</h3>
+              <ol className="space-y-3 text-gray-600">
                 <li className="flex items-start">
-                  <MapPin className="w-5 h-5 text-emerald-600 mr-3 mt-0.5 shrink-0" />
-                  <span>Intelligent algorithms create the most efficient collection routes</span>
+                  <span className="bg-emerald-100 text-emerald-800 rounded-full w-6 h-6 flex items-center justify-center mr-3 mt-0.5 shrink-0">1</span>
+                  <span>Register your facility and specify accepted waste types</span>
                 </li>
                 <li className="flex items-start">
-                  <CalendarClock className="w-5 h-5 text-emerald-600 mr-3 mt-0.5 shrink-0" />
-                  <span>Considers time windows, vehicle capacity, and waste types</span>
+                  <span className="bg-emerald-100 text-emerald-800 rounded-full w-6 h-6 flex items-center justify-center mr-3 mt-0.5 shrink-0">2</span>
+                  <span>Set your operating hours and special conditions</span>
                 </li>
                 <li className="flex items-start">
-                  <Truck className="w-5 h-5 text-emerald-600 mr-3 mt-0.5 shrink-0" />
-                  <span>One collector can serve multiple nearby clients in a single trip</span>
+                  <span className="bg-emerald-100 text-emerald-800 rounded-full w-6 h-6 flex items-center justify-center mr-3 mt-0.5 shrink-0">3</span>
+                  <span>Receive waste from verified collectors</span>
                 </li>
                 <li className="flex items-start">
-                  <BarChart3 className="w-5 h-5 text-emerald-600 mr-3 mt-0.5 shrink-0" />
-                  <span>Routes always end at appropriate disposal sites based on waste types</span>
+                  <span className="bg-emerald-100 text-emerald-800 rounded-full w-6 h-6 flex items-center justify-center mr-3 mt-0.5 shrink-0">4</span>
+                  <span>Track and manage incoming deliveries efficiently</span>
                 </li>
-              </ul>
+              </ol>
               <div className="mt-6">
-                <Link to="/about">
-                  <Button fullWidth variant="secondary">Learn More</Button>
+                <Link to="/deposit/register">
+                  <Button fullWidth>Register Your Facility</Button>
                 </Link>
               </div>
             </div>
@@ -301,10 +317,10 @@ const HomePage: React.FC = () => {
       {/* CTA Section */}
       <section className="py-16 bg-teal-600 text-white">
         <div className="container mx-auto px-4 text-center">
-          <h2 className="text-3xl font-bold mb-6">Ready to Simplify Your Waste Management?</h2>
+          <h2 className="text-3xl font-bold mb-6">Ready to Join Our Network?</h2>
           <p className="text-xl mb-8 max-w-3xl mx-auto">
-            Join thousands of satisfied users who trust WasteConnect for efficient, 
-            eco-friendly bulky waste collection and disposal.
+            Whether you need waste collection, want to earn as a collector, or manage a disposal facility,
+            we have a solution for you.
           </p>
           <div className="flex flex-col sm:flex-row justify-center space-y-4 sm:space-y-0 sm:space-x-4">
             <Link to="/client/new-request">
@@ -317,6 +333,15 @@ const HomePage: React.FC = () => {
                 className="bg-opacity-10 backdrop-blur-sm bg-white text-white border-white hover:bg-white hover:bg-opacity-20"
               >
                 Join as Collector
+              </Button>
+            </Link>
+            <Link to="/deposit/register">
+              <Button 
+                size="lg" 
+                variant="outline"
+                className="bg-opacity-10 backdrop-blur-sm bg-white text-white border-white hover:bg-white hover:bg-opacity-20"
+              >
+                Register Deposit Point
               </Button>
             </Link>
           </div>
