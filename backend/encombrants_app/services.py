@@ -7,7 +7,20 @@ def process_data(data):
 
 def create_request(data):
     try:
-        response = supabase_request("POST", "requests", data)
+        # Rename keys to match Supabase schema
+        request_data = {
+            "client_id": data.get("clientId"),
+            "status": data.get("status", "pending"),
+            "waste_types": data.get("wasteType"),
+            "volume": data.get("volume"),
+            "weight": data.get("weight"),
+            "photos": data.get("photos"),
+            "location_address": data.get("location", {}).get("address"),
+            "location_lat": data.get("location", {}).get("lat"),
+            "location_lng": data.get("location", {}).get("lng"),
+            "description": data.get("description")
+        }
+        response = supabase_request("POST", "requests", request_data)
         response.raise_for_status()
         return jsonify({"status": "created", "data": response.json()}), 201
     except Exception as e:
