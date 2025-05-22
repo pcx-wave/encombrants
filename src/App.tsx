@@ -3,6 +3,7 @@ import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { RequestProvider } from './contexts/RequestContext';
 import { RouteProvider } from './contexts/RouteContext';
+import ProtectedRoute from './components/auth/ProtectedRoute';
 import Header from './components/common/Header';
 import Footer from './components/common/Footer';
 import HomePage from './pages/HomePage';
@@ -29,13 +30,61 @@ function App() {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/signup" element={<SignUpPage />} />
+                  
+                  {/* Deposit routes */}
                   <Route path="/deposit/register" element={<DepositRegister />} />
-                  <Route path="/deposit/dashboard" element={<DepositDashboard />} />
-                  <Route path="/collector/dashboard" element={<CollectorDashboard />} />
-                  <Route path="/collector/routes" element={<CollectorRoutes />} />
-                  <Route path="/client/dashboard" element={<ClientDashboard />} />
-                  <Route path="/client/requests" element={<ClientRequests />} />
-                  <Route path="/client/new-request" element={<NewRequest />} />
+                  <Route 
+                    path="/deposit/dashboard" 
+                    element={
+                      <ProtectedRoute requiredRole="deposit">
+                        <DepositDashboard />
+                      </ProtectedRoute>
+                    } 
+                  />
+
+                  {/* Collector routes */}
+                  <Route 
+                    path="/collector/dashboard" 
+                    element={
+                      <ProtectedRoute requiredRole="collector">
+                        <CollectorDashboard />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/collector/routes" 
+                    element={
+                      <ProtectedRoute requiredRole="collector">
+                        <CollectorRoutes />
+                      </ProtectedRoute>
+                    } 
+                  />
+
+                  {/* Client routes */}
+                  <Route 
+                    path="/client/dashboard" 
+                    element={
+                      <ProtectedRoute requiredRole="client">
+                        <ClientDashboard />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/client/requests" 
+                    element={
+                      <ProtectedRoute requiredRole="client">
+                        <ClientRequests />
+                      </ProtectedRoute>
+                    } 
+                  />
+                  <Route 
+                    path="/client/new-request" 
+                    element={
+                      <ProtectedRoute requiredRole="client">
+                        <NewRequest />
+                      </ProtectedRoute>
+                    } 
+                  />
                 </Routes>
               </main>
               <Footer />
