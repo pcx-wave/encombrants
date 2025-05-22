@@ -21,4 +21,31 @@
     <input id="msg" type="text" placeholder="Enter message">
     <button onclick="submitForm()">Send</button>
     <pre id="result"></pre>
+	
+	
+	<script>
+	  async function testORSRoute() {
+		const res = await fetch('/api/compute_route', {
+		  method: 'POST',
+		  headers: { 'Content-Type': 'application/json' },
+		  body: JSON.stringify({
+			locations: [
+			  [2.3522, 48.8566],
+			  [2.4432, 48.7831],
+			  [2.3742, 48.9362]
+			]
+		  })
+		});
+		const json = await res.json();
+		console.log(json);
+		document.getElementById('result').innerText = JSON.stringify(json, null, 2);
+	  }
+	</script>
+	<button onclick="testORSRoute()">Tester ORS</button>
+	<pre id="result"></pre>
+
+	
 </body>
+
+
+

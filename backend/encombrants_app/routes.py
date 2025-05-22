@@ -64,3 +64,24 @@ def api_register_deposit():
 @main.route('/api/deposits', methods=['GET'])
 def api_get_deposits():
     return get_deposits()
+    
+@main.route('/api/test_supabase')
+def test_supabase():
+    from flask import current_app
+    import requests
+
+    headers = {
+        "apikey": current_app.config['SUPABASE_KEY'],
+        "Authorization": f"Bearer {current_app.config['SUPABASE_KEY']}",
+        "Content-Type": "application/json"
+    }
+    try:
+        r = requests.get(
+            f"{current_app.config['SUPABASE_URL']}/rest/v1/users?limit=1",
+            headers=headers
+        )
+        r.raise_for_status()
+        return jsonify(r.json())
+    except requests.exceptions.RequestException as e:
+        return jsonify({"error": str(e)}), 500
+
