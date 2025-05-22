@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
-import { User as SupabaseUser, AuthError } from '@supabase/supabase-js';
+import { User as SupabaseUser } from '@supabase/supabase-js';
 import { supabase } from '../utils/supabaseClient';
 import { AuthUser, UserRole } from '../types/auth';
 
@@ -35,7 +35,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
-    // Set up auth state listener
     const { data: { subscription } } = supabase.auth.onAuthStateChange(
       async (event, session) => {
         if (session?.user) {
@@ -47,7 +46,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       }
     );
 
-    // Check current session
     supabase.auth.getSession().then(({ data: { session } }) => {
       if (session?.user) {
         loadUser(session.user);
@@ -87,6 +85,26 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const signIn = async (email: string, password: string) => {
+    try {
+      const { data, error } = await supabase.auth.signInWithPassword({
+        email,
+        password
+      });
+
+      if (error) {
+        throw new Error(error.message);
+      }
+
+      if (!data.user) {
+        throw new Error('No user data returned after successful login');
+      }
+    } catch (error) {
+      console.error('Error signing in:', error);
+      throw error;
+    }
+  };
+
   const signUp = async (email: string, password: string, name: string, role: UserRole) => {
     try {
       const { data: { user }, error: signUpError } = await supabase.auth.signUp({
@@ -94,16 +112,9 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         password
       });
 
-      if (signUpError) {
-        if (signUpError.message.includes('already registered')) {
-          throw new Error('This email is already registered. Please try logging in instead.');
-        }
-        throw signUpError;
-      }
-      
+      if (signUpError) throw signUpError;
       if (!user) throw new Error('User creation failed');
 
-      // Create user profile
       const { error: profileError } = await supabase
         .from('users')
         .insert({
@@ -115,16 +126,15 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (profileError) throw profileError;
 
-      // If user is a collector, create collector profile
       if (role === 'collector') {
         const { error: collectorError } = await supabase
           .from('collectors')
           .insert({
             id: user.id,
-            vehicle_type: 'van', // Default values, can be updated later
+            vehicle_type: 'van',
             vehicle_capacity_volume: 10,
             vehicle_capacity_weight: 1000,
-            supported_waste_types: ['furniture', 'household'] // Default values
+            supported_waste_types: ['furniture', 'household']
           });
 
         if (collectorError) throw collectorError;
@@ -132,40 +142,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     } catch (error) {
       console.error('Error signing up:', error);
       throw error;
-    }
-  };
-
-  const signIn = async (email: string, password: string) => {
-    try {
-      const { data, error } = await supabase.auth.signInWithPassword({
-        email,
-        password
-      });
-
-      if (error) {
-        // Handle specific error cases
-        if (error.message === 'Invalid login credentials') {
-          throw new Error('Invalid email or password. Please check your credentials and try again.');
-        } else if (error.message.includes('Email not confirmed')) {
-          throw new Error('Please verify your email address before logging in.');
-        } else if (error.message.includes('rate limit')) {
-          throw new Error('Too many login attempts. Please try again later.');
-        } else {
-          throw new Error('An error occurred during sign in. Please try again.');
-        }
-      }
-
-      if (!data.user) {
-        throw new Error('No user data returned after successful login.');
-      }
-    } catch (error) {
-      if (error instanceof AuthError) {
-        throw new Error(error.message);
-      } else if (error instanceof Error) {
-        throw error;
-      } else {
-        throw new Error('An unexpected error occurred during sign in.');
-      }
     }
   };
 
