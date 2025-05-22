@@ -34,7 +34,7 @@ const NewRequest: React.FC = () => {
     }));
 
     try {
-      await createRequest({
+      const requestData = {
         clientId: currentUser.id,
         status: 'pending',
         wasteType: selectedTypes,
@@ -48,7 +48,19 @@ const NewRequest: React.FC = () => {
         },
         availabilityWindows,
         description
+      };
+
+      const response = await fetch('/api/requests', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(requestData)
       });
+
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
 
       navigate('/client/requests');
     } catch (error) {
