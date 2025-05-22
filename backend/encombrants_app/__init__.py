@@ -4,8 +4,6 @@ import os
 import requests
 from flask_cors import CORS
 
-CORS(app)
-
 
 def create_app():
     load_dotenv()  # Charge les variables de .env
