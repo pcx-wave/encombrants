@@ -10,7 +10,6 @@ import { useAuth } from '../../contexts/AuthContext';
 
 const NewRequest: React.FC = () => {
   const navigate = useNavigate();
-  const { createRequest } = useRequest();
   const { currentUser } = useAuth();
   
   const [selectedTypes, setSelectedTypes] = useState<WasteType[]>([]);
@@ -22,27 +21,39 @@ const NewRequest: React.FC = () => {
   const [availabilityTimes, setAvailabilityTimes] = useState<{ start: string; end: string }[]>([
     { start: '09:00', end: '17:00' }
   ]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     
-    if (!currentUser) return;
+    if (!currentUser) {
+      setError('You must be logged in to create a request');
+      return;
+    }
+
+    if (selectedTypes.length === 0) {
+      setError('Please select at least one waste type');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
 
     const availabilityWindows = availabilityDates.map((date, index) => ({
-      start: new Date(`${date}T${availabilityTimes[index].start}`),
-      end: new Date(`${date}T${availabilityTimes[index].end}`)
+      start: new Date(`${date}T${availabilityTimes[index].start}`).toISOString(),
+      end: new Date(`${date}T${availabilityTimes[index].end}`).toISOString()
     }));
 
     try {
       const requestData = {
         clientId: currentUser.id,
-        status: 'pending',
         wasteType: selectedTypes,
         volume: parseFloat(volume),
         weight: weight ? parseFloat(weight) : undefined,
         photos,
         location: {
-          address: currentUser.address,
+          address: currentUser.address || '',
           lat: 48.8566, // Example coordinates for Paris
           lng: 2.3522
         },
@@ -59,12 +70,15 @@ const NewRequest: React.FC = () => {
       });
 
       if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create request');
       }
 
       navigate('/client/requests');
     } catch (error) {
-      console.error('Failed to create request:', error);
+      setError(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setIsSubmitting(false);
     }
   };
 
@@ -91,6 +105,12 @@ const NewRequest: React.FC = () => {
   return (
     <div className="container mx-auto px-4 py-8">
       <Card title="New Pickup Request" className="max-w-3xl mx-auto">
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md text-red-700">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Waste Types */}
           <div className="space-y-4">
@@ -266,7 +286,12 @@ const NewRequest: React.FC = () => {
             />
           </div>
 
-          <Button type="submit" fullWidth size="lg">
+          <Button 
+            type="submit" 
+            fullWidth 
+            size="lg"
+            isLoading={isSubmitting}
+          >
             Submit Request
           </Button>
         </form>
