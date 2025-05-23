@@ -20,7 +20,7 @@ const RequestDetails: React.FC = () => {
       try {
         const [requestResponse, proposalsResponse] = await Promise.all([
           fetch(`/api/requests/${id}`),
-          fetch(`/api/proposals/${id}`);
+          fetch(`/api/proposals/${id}`)
         ]);
 
         if (!requestResponse.ok || !proposalsResponse.ok) {
