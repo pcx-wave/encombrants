@@ -1,4 +1,3 @@
-// src/pages/Collector/Dashboard.tsx
 import React, { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { MapPin, Package, TrendingUp, Route as RouteIcon } from 'lucide-react';
@@ -15,28 +14,27 @@ const CollectorDashboard: React.FC = () => {
   const { currentUser } = useAuth();
   const { getCompatibleRequestsByCollectorId } = useRequest();
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
-    const [compatibleRequests, setCompatibleRequests] = useState<PickupRequest[]>([]);
+  const [compatibleRequests, setCompatibleRequests] = useState<PickupRequest[]>([]);
+  const [selectedMarkerRequest, setSelectedMarkerRequest] = useState<string | null>(null);
 
+  useEffect(() => {
+    const fetchRequests = async () => {
+      try {
+        const response = await fetch('/api/requests');
+        if (!response.ok) {
+          throw new Error(`HTTP error! status: ${response.status}`);
+        }
+        const data = await response.json();
+        // Assuming the backend returns all requests, filter them here
+        const filteredRequests = data.filter((request: PickupRequest) => request.status === 'pending');
+        setCompatibleRequests(filteredRequests);
+      } catch (error) {
+        console.error('Failed to fetch requests:', error);
+      }
+    };
 
-    useEffect(() => {
-        const fetchRequests = async () => {
-            try {
-                const response = await fetch('/api/requests');
-                if (!response.ok) {
-                    throw new Error(`HTTP error! status: ${response.status}`);
-                }
-                const data = await response.json();
-                // Assuming the backend returns all requests, filter them here
-                const filteredRequests = data.filter((request: PickupRequest) => request.status === 'pending');
-                setCompatibleRequests(filteredRequests);
-            } catch (error) {
-                console.error('Failed to fetch requests:', error);
-            }
-        };
-
-        fetchRequests();
-    }, []);
-
+    fetchRequests();
+  }, []);
 
   const handleRequestSelection = (requestId: string) => {
     setSelectedRequests(prev =>
@@ -44,6 +42,16 @@ const CollectorDashboard: React.FC = () => {
         ? prev.filter(id => id !== requestId)
         : [...prev, requestId]
     );
+  };
+
+  const handleMarkerClick = (request: PickupRequest) => {
+    setSelectedMarkerRequest(request.id);
+    const element = document.getElementById(`request-${request.id}`);
+    if (element) {
+      element.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      element.classList.add('bg-emerald-50');
+      setTimeout(() => element.classList.remove('bg-emerald-50'), 2000);
+    }
   };
 
   const handleGenerateRoute = () => {
@@ -100,15 +108,22 @@ const CollectorDashboard: React.FC = () => {
         subtitle="Select multiple requests to generate an optimized route"
         className="mb-8"
       >
-        <Map requests={compatibleRequests} />
+        <Map 
+          requests={compatibleRequests} 
+          height="500px"
+          onMarkerClick={handleMarkerClick}
+        />
 
-        <div className="space-y-4">
+        <div className="space-y-4 mt-6">
           {compatibleRequests.map((request: PickupRequest) => (
             <div
+              id={`request-${request.id}`}
               key={request.id}
               className={`p-4 rounded-lg border transition-colors ${
                 selectedRequests.includes(request.id)
                   ? 'border-emerald-500 bg-emerald-50'
+                  : selectedMarkerRequest === request.id
+                  ? 'border-emerald-300 bg-emerald-50'
                   : 'border-gray-200'
               }`}
             >
