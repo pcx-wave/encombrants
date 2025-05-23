@@ -5,17 +5,15 @@ import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import WasteTypeIcon from '../../components/common/WasteTypeIcon';
 import { PickupRequest } from '../../types';
-import { useRequest } from '../../contexts/RequestContext';
-import { useAuth } from '../../contexts/AuthContext';
 import Map from '../../components/Map';
 
 const CollectorDashboard: React.FC = () => {
   const navigate = useNavigate();
-  const { currentUser } = useAuth();
-  const { getCompatibleRequestsByCollectorId } = useRequest();
   const [selectedRequests, setSelectedRequests] = useState<string[]>([]);
   const [compatibleRequests, setCompatibleRequests] = useState<PickupRequest[]>([]);
   const [selectedMarkerRequest, setSelectedMarkerRequest] = useState<string | null>(null);
+  const [isGeneratingRoute, setIsGeneratingRoute] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRequests = async () => {
@@ -25,11 +23,11 @@ const CollectorDashboard: React.FC = () => {
           throw new Error(`HTTP error! status: ${response.status}`);
         }
         const data = await response.json();
-        // Assuming the backend returns all requests, filter them here
         const filteredRequests = data.filter((request: PickupRequest) => request.status === 'pending');
         setCompatibleRequests(filteredRequests);
       } catch (error) {
         console.error('Failed to fetch requests:', error);
+        setError('Failed to fetch available requests');
       }
     };
 
@@ -54,10 +52,35 @@ const CollectorDashboard: React.FC = () => {
     }
   };
 
-  const handleGenerateRoute = () => {
-    if (selectedRequests.length > 0) {
-      // TODO: Call backend API to generate route
-      navigate('/collector/routes');
+  const handleGenerateRoute = async () => {
+    if (selectedRequests.length === 0) return;
+
+    setIsGeneratingRoute(true);
+    setError(null);
+
+    try {
+      const response = await fetch('/api/compute_route', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          requestIds: selectedRequests,
+          startTime: new Date().toISOString() // For demo purposes, using current time
+        })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to generate route');
+      }
+
+      const routeData = await response.json();
+      navigate('/collector/routes', { state: { route: routeData } });
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'Failed to generate route');
+    } finally {
+      setIsGeneratingRoute(false);
     }
   };
 
@@ -108,6 +131,12 @@ const CollectorDashboard: React.FC = () => {
         subtitle="Select multiple requests to generate an optimized route"
         className="mb-8"
       >
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md text-red-700">
+            {error}
+          </div>
+        )}
+
         <Map 
           requests={compatibleRequests} 
           height="500px"
@@ -115,7 +144,7 @@ const CollectorDashboard: React.FC = () => {
         />
 
         <div className="space-y-4 mt-6">
-          {compatibleRequests.map((request: PickupRequest) => (
+          {compatibleRequests.map((request) => (
             <div
               id={`request-${request.id}`}
               key={request.id}
@@ -165,7 +194,8 @@ const CollectorDashboard: React.FC = () => {
         <div className="mt-6">
           <Button
             onClick={handleGenerateRoute}
-            disabled={selectedRequests.length === 0}
+            disabled={selectedRequests.length === 0 || isGeneratingRoute}
+            isLoading={isGeneratingRoute}
             fullWidth
             size="lg"
           >

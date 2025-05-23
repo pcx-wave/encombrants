@@ -1,6 +1,6 @@
-```python
 from flask import jsonify
 import os
+import requests
 from .supabase_utils import supabase_request
 
 def process_data(data):
@@ -91,40 +91,109 @@ def get_proposals(request_id):
 
 def compute_route(data):
     """
-    data = {
-        "locations": [[lon1, lat1], [lon2, lat2], ...]
-    }
+    Compute an optimized route for the given request IDs using OpenRouteService
     """
-    ors_key = os.getenv("ORS_API_KEY")
-    if not ors_key:
-        return jsonify({"error": "ORS_API_KEY not configured"}), 500
-
-    url = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
-    headers = {
-        "Authorization": ors_key,
-        "Content-Type": "application/json"
-    }
-
-    body = {
-        "coordinates": data.get("locations", []),
-        "instructions": False
-    }
-
     try:
-        response = requests.post(url, headers=headers, json=body)
-        response.raise_for_status()
-        route_data = response.json()
-        distance_km = route_data['features'][0]['properties']['summary']['distance'] / 1000
+        request_ids = data.get("requestIds", [])
+        if not request_ids:
+            return jsonify({"error": "No request IDs provided"}), 400
+
+        # Fetch request locations from database
+        locations_response = supabase_request(
+            "GET",
+            "requests",
+            params={
+                "select": "id,location_lat,location_lng",
+                "id": f"in.({','.join(request_ids)})"
+            }
+        )
+        locations_response.raise_for_status()
+        requests = locations_response.json()
+
+        # Extract coordinates for ORS API
+        coordinates = [[req["location_lng"], req["location_lat"]] for req in requests]
+
+        # Call OpenRouteService API
+        ors_key = os.getenv("ORS_API_KEY")
+        if not ors_key:
+            return jsonify({"error": "ORS_API_KEY not configured"}), 500
+
+        url = "https://api.openrouteservice.org/v2/directions/driving-car/geojson"
+        headers = {
+            "Authorization": ors_key,
+            "Content-Type": "application/json"
+        }
+
+        body = {
+            "coordinates": coordinates,
+            "instructions": True,
+            "preference": "recommended",
+            "units": "km"
+        }
+
+        ors_response = requests.post(url, headers=headers, json=body)
+        ors_response.raise_for_status()
+        route_data = ors_response.json()
+
+        # Extract relevant data from ORS response
+        total_distance = route_data['features'][0]['properties']['summary']['distance'] / 1000  # Convert to km
+        total_duration = route_data['features'][0]['properties']['summary']['duration'] / 60    # Convert to minutes
+
+        # Create route in database
+        route_data = {
+            "collector_id": data.get("collectorId"),  # Will be set by RLS
+            "disposal_site_id": "00000000-0000-0000-0000-000000000001",  # TODO: Find best disposal site
+            "distance": round(total_distance, 1),
+            "duration": round(total_duration),
+            "start_time": data.get("startTime"),
+            "end_time": data.get("startTime"),  # TODO: Calculate proper end time
+            "status": "scheduled"
+        }
+
+        route_response = supabase_request("POST", "routes", route_data)
+        route_response.raise_for_status()
+        route = route_response.json()[0]
+
+        # Create route stops
+        stops_data = []
+        for i, request_id in enumerate(request_ids):
+            stops_data.append({
+                "route_id": route["id"],
+                "request_id": request_id,
+                "stop_order": i + 1,
+                "estimated_arrival": data.get("startTime"),  # TODO: Calculate proper arrival times
+                "status": "pending"
+            })
+
+        stops_response = supabase_request("POST", "route_stops", stops_data)
+        stops_response.raise_for_status()
+
         return jsonify({
-            "route": route_data,
-            "distance_km": round(distance_km, 2)
+            "route": route,
+            "stops": stops_response.json(),
+            "path": route_data['features'][0]['geometry']
         }), 200
+
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
 def confirm_route(data):
-    # Stub for confirming route
-    return jsonify({"status": "route confirmed", "route_id": data.get("route_id")})
+    try:
+        route_id = data.get("route_id")
+        if not route_id:
+            return jsonify({"error": "Route ID is required"}), 400
+
+        # Update route status
+        response = supabase_request(
+            "PATCH",
+            f"routes?id=eq.{route_id}",
+            {"status": "in_progress"}
+        )
+        response.raise_for_status()
+
+        return jsonify({"status": "success"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
 
 def register_deposit(data):
     try:
@@ -178,4 +247,3 @@ def get_deposits():
         return jsonify(response.json()), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-```
