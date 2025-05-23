@@ -5,6 +5,7 @@ import Button from '../../components/common/Button';
 import Card from '../../components/common/Card';
 import { WasteType } from '../../types';
 import WasteTypeIcon, { getAllWasteTypes } from '../../components/common/WasteTypeIcon';
+import { useAuth } from '../../contexts/AuthContext';
 
 interface OpeningHours {
   day: string;
@@ -14,6 +15,7 @@ interface OpeningHours {
 
 const DepositRegister: React.FC = () => {
   const navigate = useNavigate();
+  const { currentUser } = useAuth();
   const [name, setName] = useState('');
   const [address, setAddress] = useState('');
   const [selectedWasteTypes, setSelectedWasteTypes] = useState<WasteType[]>([]);
@@ -27,11 +29,73 @@ const DepositRegister: React.FC = () => {
     { day: 'Sunday', open: '', close: '' },
   ]);
   const [paymentEnabled, setPaymentEnabled] = useState(false);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    // TODO: Submit to backend
-    navigate('/deposit/dashboard');
+    
+    if (!currentUser) {
+      setError('You must be logged in to register a deposit point');
+      return;
+    }
+
+    if (selectedWasteTypes.length === 0) {
+      setError('Please select at least one waste type');
+      return;
+    }
+
+    setIsSubmitting(true);
+    setError(null);
+
+    try {
+      // For now, we'll use hardcoded coordinates for Paris
+      // In a production app, we would use a geocoding service
+      const depositData = {
+        name,
+        address,
+        lat: 48.8566,
+        lng: 2.3522,
+        acceptedWasteTypes: selectedWasteTypes,
+        openingHours: openingHours.map(hours => ({
+          day: hours.day.toLowerCase(),
+          hours: hours.open && hours.close ? [{
+            open: hours.open,
+            close: hours.close
+          }] : []
+        }))
+      };
+
+      const response = await fetch('/api/deposits/register', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(depositData)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to register deposit point');
+      }
+
+      // Update user profile to mark as deposit
+      await fetch(`/api/users/${currentUser.id}`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          type: 'deposit'
+        })
+      });
+
+      navigate('/deposit/dashboard');
+    } catch (error) {
+      setError(error instanceof Error ? error.message : 'An error occurred');
+    } finally {
+      setIsSubmitting(false);
+    }
   };
 
   const toggleWasteType = (type: WasteType) => {
@@ -55,6 +119,12 @@ const DepositRegister: React.FC = () => {
   return (
     <div className="container mx-auto px-4 py-8">
       <Card title="Register as a Deposit Point" className="max-w-3xl mx-auto">
+        {error && (
+          <div className="mb-6 p-4 bg-red-50 border border-red-200 rounded-md text-red-700">
+            {error}
+          </div>
+        )}
+
         <form onSubmit={handleSubmit} className="space-y-8">
           {/* Basic Information */}
           <div className="space-y-4">
@@ -168,7 +238,12 @@ const DepositRegister: React.FC = () => {
             )}
           </div>
 
-          <Button type="submit" fullWidth size="lg">
+          <Button 
+            type="submit" 
+            fullWidth 
+            size="lg"
+            isLoading={isSubmitting}
+          >
             Complete Registration
           </Button>
         </form>
