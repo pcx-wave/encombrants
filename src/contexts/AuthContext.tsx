@@ -66,7 +66,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     };
   }, []);
 
-  const loadUser = async (authUser: SupabaseUser, retryCount = 3): Promise<void> => {
+  const loadUser = async (authUser: SupabaseUser, retryCount = 3, retryDelay = 1000): Promise<void> => {
     try {
       const { data: userData, error } = await supabase
         .from('users')
@@ -75,20 +75,17 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .maybeSingle();
 
       if (error) {
-        if (error.code === 'PGRST116' && retryCount > 0) {
-          // Wait for 1 second before retrying
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          return loadUser(authUser, retryCount - 1);
-        }
         throw error;
       }
 
-
       if (!userData) {
-        console.warn('User profile not yet found');
-        return;
+        if (retryCount > 0) {
+          console.log(`User profile not found, retrying... (${retryCount} attempts remaining)`);
+          await new Promise(resolve => setTimeout(resolve, retryDelay));
+          return loadUser(authUser, retryCount - 1, retryDelay * 1.5);
+        }
+        throw new Error('User profile not found after multiple attempts');
       }
-
 
       setCurrentUser({
         id: userData.id,
@@ -114,9 +111,6 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
       });
 
       if (error) {
-        if (error.message === 'Invalid login credentials') {
-          throw new Error('Invalid email or password');
-        }
         throw error;
       }
 
@@ -124,25 +118,30 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw new Error('No user data returned from authentication');
       }
 
-      // Wait for a short delay to ensure the user profile is available
-      await new Promise(resolve => setTimeout(resolve, 1000));
-
+      // Try to load the user profile with retries
       try {
-        await loadUser(data.user);
+        await loadUser(data.user, 5, 1000);
       } catch (error) {
-        if (error instanceof Error) {
-          throw new Error('User profile not found. Please contact support.');
-        }
-        throw error;
+        console.error('Error loading user profile:', error);
+        // Sign out the user if we can't load their profile
+        await supabase.auth.signOut();
+        throw new Error('Unable to load user profile. Please try again or contact support.');
       }
     } catch (error) {
       console.error('Error signing in:', error);
+      if (error instanceof Error) {
+        throw new Error(error.message === 'Invalid login credentials' 
+          ? 'Invalid email or password' 
+          : 'An error occurred during sign in. Please try again.');
+      }
       throw error;
     }
   };
 
   const signUp = async (email: string, password: string, name: string, role: UserRole) => {
+    let authUser = null;
     try {
+      // Step 1: Create auth user
       const { data: { user }, error: signUpError } = await supabase.auth.signUp({
         email,
         password
@@ -150,49 +149,66 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
 
       if (signUpError) throw signUpError;
       if (!user) throw new Error('User creation failed');
+      
+      authUser = user;
 
-      try {
-        const { error: profileError } = await supabase
-          .from('users')
+      // Step 2: Create user profile
+      const { error: profileError } = await supabase
+        .from('users')
+        .insert({
+          id: user.id,
+          email,
+          name,
+          type: role
+        });
+
+      if (profileError) {
+        throw profileError;
+      }
+
+      // Step 3: Create collector profile if needed
+      if (role === 'collector') {
+        const { error: collectorError } = await supabase
+          .from('collectors')
           .insert({
             id: user.id,
-            email,
-            name,
-            type: role
+            vehicle_type: 'van',
+            vehicle_capacity_volume: 10,
+            vehicle_capacity_weight: 1000,
+            supported_waste_types: ['furniture', 'household']
           });
 
-        if (profileError) {
-          await supabase.auth.admin.deleteUser(user.id);
-          throw profileError;
+        if (collectorError) {
+          throw collectorError;
         }
-
-        if (role === 'collector') {
-          const { error: collectorError } = await supabase
-            .from('collectors')
-            .insert({
-              id: user.id,
-              vehicle_type: 'van',
-              vehicle_capacity_volume: 10,
-              vehicle_capacity_weight: 1000,
-              supported_waste_types: ['furniture', 'household']
-            });
-
-          if (collectorError) {
-            await supabase.auth.admin.deleteUser(user.id);
-            await supabase.from('users').delete().eq('id', user.id);
-            throw collectorError;
-          }
-        }
-
-        // Wait for a short delay to ensure all database operations are complete
-        await new Promise(resolve => setTimeout(resolve, 1000));
-      } catch (error) {
-        console.error('Error creating user profile:', error);
-        await supabase.auth.admin.deleteUser(user.id);
-        throw error;
       }
+
+      // Step 4: Verify profile creation
+      await new Promise(resolve => setTimeout(resolve, 2000));
+      await loadUser(user, 5, 1000);
+
     } catch (error) {
-      console.error('Error signing up:', error);
+      console.error('Error during sign up:', error);
+      
+      // Cleanup on failure
+      if (authUser) {
+        try {
+          // Delete auth user
+          await supabase.auth.admin.deleteUser(authUser.id);
+          // Delete user profile if it was created
+          await supabase.from('users').delete().eq('id', authUser.id);
+          // Delete collector profile if it was created
+          if (role === 'collector') {
+            await supabase.from('collectors').delete().eq('id', authUser.id);
+          }
+        } catch (cleanupError) {
+          console.error('Error during cleanup:', cleanupError);
+        }
+      }
+      
+      if (error instanceof Error) {
+        throw new Error('Failed to create user account. Please try again.');
+      }
       throw error;
     }
   };
