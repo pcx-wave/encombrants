@@ -19,7 +19,7 @@ const RequestDetails: React.FC = () => {
     const fetchRequestDetails = async () => {
       try {
         const [requestResponse, proposalsResponse] = await Promise.all([
-          fetch(`/api/requests/${id}`);
+          fetch(`/api/requests/${id}`),
           fetch(`/api/proposals/${id}`);
         ]);
 
