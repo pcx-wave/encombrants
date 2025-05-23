@@ -1,4 +1,3 @@
-```tsx
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
 import { Package, MapPin, Clock, Euro, ArrowLeft } from 'lucide-react';
@@ -20,8 +19,8 @@ const RequestDetails: React.FC = () => {
     const fetchRequestDetails = async () => {
       try {
         const [requestResponse, proposalsResponse] = await Promise.all([
-          fetch(`/api/requests/${id}`),
-          fetch(`/api/proposals/${id}`)
+          fetch(`/api/requests/${id}`);
+          fetch(`/api/proposals/${id}`);
         ]);
 
         if (!requestResponse.ok || !proposalsResponse.ok) {
@@ -253,4 +252,3 @@ const RequestDetails: React.FC = () => {
 };
 
 export default RequestDetails;
-```
