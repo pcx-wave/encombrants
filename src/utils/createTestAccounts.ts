@@ -1,77 +1,90 @@
-import { supabase } from './supabaseClient';
+import { createClient } from '@supabase/supabase-js';
 import { testAccounts } from '../data/testAccounts';
 
-export async function createTestAccounts() {
-  for (const [role, account] of Object.entries(testAccounts)) {
-    try {
-      // Create auth account
-      const { data: authData, error: authError } = await supabase.auth.signUp({
+// Create a Supabase client with the service role key for admin access
+const supabase = createClient(
+  process.env.VITE_SUPABASE_URL || '',
+  process.env.SUPABASE_SERVICE_ROLE_KEY || ''
+);
+
+async function createTestAccount(role: string, account: any) {
+  try {
+    // Create auth user with admin API
+    const { data: authData, error: authError } = await supabase.auth.admin.createUser({
+      email: account.email,
+      password: account.password,
+      email_confirm: true
+    });
+
+    if (authError || !authData.user) {
+      console.error(`❌ Failed to create ${role} auth account:`, authError);
+      return;
+    }
+
+    // Create user profile
+    const { error: profileError } = await supabase
+      .from('users')
+      .insert({
+        id: authData.user.id,
         email: account.email,
-        password: account.password
+        name: account.name,
+        type: account.role
       });
 
-      if (authError) {
-        console.error(`Failed to create ${role} auth account:`, authError);
-        continue;
-      }
+    if (profileError) {
+      console.error(`❌ Failed to create ${role} profile:`, profileError);
+      return;
+    }
 
-      if (!authData.user) {
-        console.error(`No user data returned for ${role}`);
-        continue;
-      }
-
-      // Create user profile
-      const { error: profileError } = await supabase
-        .from('users')
+    // Create collector profile if needed
+    if (account.role === 'collector') {
+      const { error: collectorError } = await supabase
+        .from('collectors')
         .insert({
           id: authData.user.id,
-          email: account.email,
-          name: account.name,
-          type: account.role
+          vehicle_type: 'van',
+          vehicle_capacity_volume: 12,
+          vehicle_capacity_weight: 1500,
+          vehicle_license_plate: 'TEST123',
+          supported_waste_types: ['furniture', 'appliances', 'electronics', 'household'],
+          rating: 4.8,
+          completed_jobs: 42
         });
 
-      if (profileError) {
-        console.error(`Failed to create ${role} profile:`, profileError);
-        continue;
+      if (collectorError) {
+        console.error('❌ Failed to create collector profile:', collectorError);
+        return;
       }
-
-      // Create collector profile if needed
-      if (account.role === 'collector') {
-        const { error: collectorError } = await supabase
-          .from('collectors')
-          .insert({
-            id: authData.user.id,
-            vehicle_type: 'van',
-            vehicle_capacity_volume: 12,
-            vehicle_capacity_weight: 1500,
-            vehicle_license_plate: 'TEST123',
-            supported_waste_types: ['furniture', 'appliances', 'electronics', 'household'],
-            rating: 4.8,
-            completed_jobs: 42
-          });
-
-        if (collectorError) {
-          console.error('Failed to create collector profile:', collectorError);
-        }
-      }
-
-      // Create deposit settings if needed
-      if (account.role === 'deposit') {
-        const { error: depositError } = await supabase
-          .from('deposit_settings')
-          .insert({
-            deposit_id: authData.user.id,
-            payment_enabled: false
-          });
-
-        if (depositError) {
-          console.error('Failed to create deposit settings:', depositError);
-        }
-      }
-
-      console.log(`Successfully created ${role} account`);
-    } catch (error) {
-      console.error(`Error creating ${role} account:`, error);
     }
+
+    // Create deposit settings if needed
+    if (account.role === 'deposit') {
+      const { error: depositError } = await supabase
+        .from('deposit_settings')
+        .insert({
+          deposit_id: authData.user.id,
+          payment_enabled: false
+        });
+
+      if (depositError) {
+        console.error('❌ Failed to create deposit settings:', depositError);
+        return;
+      }
+    }
+
+    console.log(`✅ Successfully created ${role} account:`, account.email);
+  } catch (error) {
+    console.error(`❌ Error creating ${role} account:`, error);
   }
+}
+
+// This function should be run manually, not on app startup
+export async function createTestAccounts() {
+  console.log('Creating test accounts...');
+  
+  for (const [role, account] of Object.entries(testAccounts)) {
+    await createTestAccount(role, account);
+  }
+  
+  console.log('Test account creation completed');
 }

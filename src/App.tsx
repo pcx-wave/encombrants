@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React from 'react';
 import { BrowserRouter as Router, Routes, Route } from 'react-router-dom';
 import { AuthProvider } from './contexts/AuthContext';
 import { RequestProvider } from './contexts/RequestContext';
@@ -17,14 +17,8 @@ import ClientDashboard from './pages/Client/Dashboard';
 import ClientRequests from './pages/Client/Requests';
 import NewRequest from './pages/Client/NewRequest';
 import RequestDetails from './pages/Client/RequestDetails';
-import { createTestAccounts } from './utils/createTestAccounts';
 
 function App() {
-  useEffect(() => {
-    // Create test accounts when the app starts
-    createTestAccounts().catch(console.error);
-  }, []);
-
   return (
     <Router>
       <AuthProvider>
