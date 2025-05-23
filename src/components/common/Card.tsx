@@ -6,6 +6,8 @@ interface CardProps {
   subtitle?: string;
   footer?: ReactNode;
   hover?: boolean;
+  isLoading?: boolean;
+  error?: string;
   className?: string;
   headerClassName?: string;
   bodyClassName?: string;
@@ -18,11 +20,60 @@ const Card: React.FC<CardProps> = ({
   subtitle,
   footer,
   hover = false,
+  isLoading = false,
+  error,
   className = '',
   headerClassName = '',
   bodyClassName = '',
   footerClassName = ''
 }) => {
+  if (isLoading) {
+    return (
+      <div className={`
+        bg-white rounded-lg shadow-md overflow-hidden animate-pulse
+        ${hover ? 'hover:shadow-lg transition-shadow duration-300' : ''}
+        ${className}
+      `}>
+        {title && (
+          <div className={`px-6 py-4 ${headerClassName}`}>
+            <div className="h-6 bg-gray-200 rounded w-1/3"></div>
+            {subtitle && <div className="h-4 bg-gray-200 rounded w-2/3 mt-2"></div>}
+          </div>
+        )}
+        <div className={`px-6 py-4 space-y-4 ${bodyClassName}`}>
+          <div className="h-4 bg-gray-200 rounded w-full"></div>
+          <div className="h-4 bg-gray-200 rounded w-5/6"></div>
+          <div className="h-4 bg-gray-200 rounded w-4/6"></div>
+        </div>
+        {footer && (
+          <div className={`px-6 py-4 bg-gray-50 border-t border-gray-100 ${footerClassName}`}>
+            <div className="h-4 bg-gray-200 rounded w-1/4"></div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className={`
+        bg-white rounded-lg shadow-md overflow-hidden
+        ${hover ? 'hover:shadow-lg transition-shadow duration-300' : ''}
+        ${className}
+      `}>
+        <div className="p-6 text-center">
+          <div className="text-red-600 mb-2">{error}</div>
+          <button 
+            onClick={() => window.location.reload()}
+            className="text-sm text-emerald-600 hover:text-emerald-700"
+          >
+            Try Again
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`
       bg-white rounded-lg shadow-md overflow-hidden
