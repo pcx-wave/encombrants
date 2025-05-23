@@ -57,21 +57,6 @@ async function createTestAccount(role: string, account: any) {
       }
     }
 
-    // Create deposit settings if needed
-    if (account.role === 'deposit') {
-      const { error: depositError } = await supabase
-        .from('deposit_settings')
-        .insert({
-          deposit_id: authData.user.id,
-          payment_enabled: false
-        });
-
-      if (depositError) {
-        console.error('❌ Failed to create deposit settings:', depositError);
-        return;
-      }
-    }
-
     console.log(`✅ Successfully created ${role} account:`, account.email);
   } catch (error) {
     console.error(`❌ Error creating ${role} account:`, error);
