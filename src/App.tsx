@@ -1,14 +1,18 @@
-```tsx
-// Update the routes in App.tsx to include the new RequestDetails page
+import React from 'react';
 import RequestDetails from './pages/Client/RequestDetails';
+import { ProtectedRoute } from './components/auth/ProtectedRoute';
 
-// Add this route inside the Client routes section
-<Route 
-  path="/client/requests/:id" 
-  element={
-    <ProtectedRoute requiredRole="client">
-      <RequestDetails />
-    </ProtectedRoute>
-  } 
-/>
-```
+function App() {
+  return (
+    <Route 
+      path="/client/requests/:id" 
+      element={
+        <ProtectedRoute requiredRole="client">
+          <RequestDetails />
+        </ProtectedRoute>
+      } 
+    />
+  );
+}
+
+export default App;
