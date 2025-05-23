@@ -72,7 +72,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         .from('users')
         .select('*')
         .eq('id', authUser.id)
-        .single();
+        .maybeSingle();
 
       if (error) {
         if (error.code === 'PGRST116' && retryCount > 0) {
@@ -83,9 +83,12 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
         throw error;
       }
 
+
       if (!userData) {
-        throw new Error('User record not found in database');
+        console.warn('User profile not yet found');
+        return;
       }
+
 
       setCurrentUser({
         id: userData.id,
