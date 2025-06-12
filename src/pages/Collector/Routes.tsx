@@ -6,14 +6,17 @@ import Button from '../../components/common/Button';
 import WasteTypeIcon from '../../components/common/WasteTypeIcon';
 import Map from '../../components/Map';
 import { Route, RouteStop, PickupRequest } from '../../types';
+import { useRoute } from '../../contexts/RouteContext';
 
 const CollectorRoutes: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
+  const { updateRouteStatus, updateStopStatus } = useRoute();
   const [currentRoute, setCurrentRoute] = useState<Route | null>(location.state?.route || null);
   const [requests, setRequests] = useState<PickupRequest[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [completingStops, setCompletingStops] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     const fetchRequests = async () => {
@@ -25,7 +28,31 @@ const CollectorRoutes: React.FC = () => {
           fetch(`/api/requests/${id}`).then(res => res.json())
         );
         const requestsData = await Promise.all(promises);
-        setRequests(requestsData);
+        
+        // Transform the data to match our PickupRequest interface
+        const transformedRequests: PickupRequest[] = requestsData.map((req: any) => ({
+          id: req.id,
+          clientId: req.client_id,
+          status: req.status,
+          wasteType: req.waste_types,
+          volume: req.volume,
+          weight: req.weight,
+          photos: req.photos || [],
+          location: {
+            address: req.location_address,
+            lat: req.location_lat,
+            lng: req.location_lng
+          },
+          availabilityWindows: (req.availability_windows || []).map((window: any) => ({
+            start: new Date(window.start_time),
+            end: new Date(window.end_time)
+          })),
+          description: req.description,
+          createdAt: new Date(req.created_at),
+          proposals: []
+        }));
+        
+        setRequests(transformedRequests);
       } catch (error) {
         console.error('Failed to fetch requests:', error);
         setError('Failed to load route details');
@@ -42,26 +69,8 @@ const CollectorRoutes: React.FC = () => {
     setError(null);
 
     try {
-      const response = await fetch('/api/route/confirm', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          route_id: currentRoute.id
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to confirm route');
-      }
-
-      // Update route status locally
-      setCurrentRoute(prev => prev ? {
-        ...prev,
-        status: 'in_progress'
-      } : null);
+      const updatedRoute = await updateRouteStatus(currentRoute.id, 'in_progress');
+      setCurrentRoute(updatedRoute);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to confirm route');
     } finally {
@@ -72,37 +81,21 @@ const CollectorRoutes: React.FC = () => {
   const handleCompleteStop = async (stop: RouteStop) => {
     if (!currentRoute) return;
 
+    setCompletingStops(prev => new Set(prev).add(stop.requestId));
+    setError(null);
+
     try {
-      const response = await fetch(`/api/route/stops/${stop.requestId}/complete`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({
-          route_id: currentRoute.id
-        })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to complete stop');
-      }
-
-      // Update stop status locally
-      setCurrentRoute(prev => {
-        if (!prev) return null;
-        return {
-          ...prev,
-          stops: prev.stops.map(s =>
-            s.requestId === stop.requestId
-              ? { ...s, status: 'completed' as const }
-              : s
-          )
-        };
-      });
+      const updatedRoute = await updateStopStatus(currentRoute.id, stop.requestId, 'completed');
+      setCurrentRoute(updatedRoute);
     } catch (error) {
       console.error('Failed to complete stop:', error);
       setError('Failed to mark stop as completed');
+    } finally {
+      setCompletingStops(prev => {
+        const newSet = new Set(prev);
+        newSet.delete(stop.requestId);
+        return newSet;
+      });
     }
   };
 
@@ -148,14 +141,25 @@ const CollectorRoutes: React.FC = () => {
                 const request = requests.find(r => r.id === stop.requestId);
                 if (!request) return null;
 
+                const isCompleting = completingStops.has(stop.requestId);
+                const canComplete = index === 0 || currentRoute.stops[index - 1].status === 'completed';
+
                 return (
                   <div key={stop.requestId} className="relative">
                     {index !== currentRoute.stops.length - 1 && (
                       <div className="absolute left-6 top-12 bottom-0 w-0.5 bg-gray-200" />
                     )}
                     <div className="flex items-start">
-                      <div className="flex-shrink-0 bg-emerald-100 rounded-full p-2">
-                        <MapPin className="w-6 h-6 text-emerald-600" />
+                      <div className={`flex-shrink-0 rounded-full p-2 ${
+                        stop.status === 'completed' 
+                          ? 'bg-green-100' 
+                          : 'bg-emerald-100'
+                      }`}>
+                        <MapPin className={`w-6 h-6 ${
+                          stop.status === 'completed' 
+                            ? 'text-green-600' 
+                            : 'text-emerald-600'
+                        }`} />
                       </div>
                       <div className="ml-4 flex-grow">
                         <div className="flex items-center justify-between">
@@ -168,8 +172,8 @@ const CollectorRoutes: React.FC = () => {
                             variant={stop.status === 'completed' ? 'success' : 'primary'}
                             leftIcon={stop.status === 'completed' ? <CheckCircle className="w-4 h-4" /> : undefined}
                             onClick={() => handleCompleteStop(stop)}
-                            disabled={stop.status === 'completed' || 
-                              (index > 0 && currentRoute.stops[index - 1].status !== 'completed')}
+                            disabled={stop.status === 'completed' || !canComplete || isCompleting}
+                            isLoading={isCompleting}
                           >
                             {stop.status === 'completed' ? 'Completed' : 'Mark Complete'}
                           </Button>

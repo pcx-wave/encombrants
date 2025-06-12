@@ -1,9 +1,12 @@
-import React, { createContext, useContext, useState, ReactNode } from 'react';
+import React, { createContext, useContext, useState, useEffect, ReactNode } from 'react';
 import { Route, RouteStop, DisposalSite, WasteType } from '../types';
-import mockData from '../data/mockData';
+import { useAuth } from './AuthContext';
 
 interface RouteContextType {
   routes: Route[];
+  disposalSites: DisposalSite[];
+  isLoading: boolean;
+  error: string | null;
   getRouteById: (id: string) => Route | undefined;
   getRoutesByCollectorId: (collectorId: string) => Route[];
   createRoute: (
@@ -14,7 +17,8 @@ interface RouteContextType {
   updateRouteStatus: (routeId: string, status: Route['status']) => Promise<Route>;
   updateStopStatus: (routeId: string, requestId: string, status: RouteStop['status']) => Promise<Route>;
   getDisposalSites: () => DisposalSite[];
-  findBestDisposalSite: (wasteTypes: WasteType[], location: { lat: number; lng: number }) => DisposalSite;
+  refreshRoutes: () => Promise<void>;
+  refreshDisposalSites: () => Promise<void>;
 }
 
 const RouteContext = createContext<RouteContextType | undefined>(undefined);
@@ -32,8 +36,77 @@ interface RouteProviderProps {
 }
 
 export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
-  const [routes, setRoutes] = useState<Route[]>(mockData.routes);
-  const [disposalSites] = useState<DisposalSite[]>(mockData.disposalSites);
+  const [routes, setRoutes] = useState<Route[]>([]);
+  const [disposalSites, setDisposalSites] = useState<DisposalSite[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+  const { currentUser } = useAuth();
+
+  // Transform backend route data to frontend format
+  const transformRoute = (backendRoute: any): Route => {
+    return {
+      id: backendRoute.id,
+      collectorId: backendRoute.collector_id,
+      stops: [], // Will be populated separately
+      disposalSiteId: backendRoute.disposal_site_id,
+      distance: backendRoute.distance,
+      duration: backendRoute.duration,
+      startTime: new Date(backendRoute.start_time),
+      endTime: new Date(backendRoute.end_time),
+      status: backendRoute.status
+    };
+  };
+
+  // Transform backend disposal site data to frontend format
+  const transformDisposalSite = (backendSite: any): DisposalSite => {
+    return {
+      id: backendSite.id,
+      name: backendSite.name,
+      location: {
+        address: backendSite.address,
+        lat: backendSite.lat,
+        lng: backendSite.lng
+      },
+      openingHours: [], // Not implemented in current schema
+      acceptedWasteTypes: backendSite.accepted_waste_types as WasteType[]
+    };
+  };
+
+  const fetchRoutes = async () => {
+    try {
+      setIsLoading(true);
+      setError(null);
+      
+      // For now, we'll use a simple approach since we don't have a routes endpoint yet
+      // In a real implementation, you would fetch routes from the backend
+      setRoutes([]);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Failed to fetch routes');
+      console.error('Error fetching routes:', err);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const fetchDisposalSites = async () => {
+    try {
+      const response = await fetch('/api/deposits');
+      if (!response.ok) {
+        throw new Error(`HTTP error! status: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const transformedSites = data.map(transformDisposalSite);
+      setDisposalSites(transformedSites);
+    } catch (err) {
+      console.error('Error fetching disposal sites:', err);
+    }
+  };
+
+  useEffect(() => {
+    fetchRoutes();
+    fetchDisposalSites();
+  }, []);
 
   const getRouteById = (id: string) => {
     return routes.find(route => route.id === id);
@@ -43,203 +116,168 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
     return routes.filter(route => route.collectorId === collectorId);
   };
 
-  // Find the best disposal site based on waste types and proximity
-  const findBestDisposalSite = (wasteTypes: WasteType[], location: { lat: number; lng: number }): DisposalSite => {
-    // Filter sites that accept all the waste types
-    const compatibleSites = disposalSites.filter(site => 
-      wasteTypes.every(type => site.acceptedWasteTypes.includes(type))
-    );
-    
-    if (compatibleSites.length === 0) {
-      // If no site accepts all waste types, return the first site as fallback
-      return disposalSites[0];
-    }
-    
-    // Calculate distance (simplified version using Euclidean distance)
-    // In a real app, you would use a routing API to get actual driving distances
-    const calculateDistance = (lat1: number, lng1: number, lat2: number, lng2: number) => {
-      return Math.sqrt(Math.pow(lat2 - lat1, 2) + Math.pow(lng2 - lng1, 2));
-    };
-    
-    // Find the closest compatible site
-    let closestSite = compatibleSites[0];
-    let minDistance = calculateDistance(
-      location.lat, location.lng, 
-      closestSite.location.lat, closestSite.location.lng
-    );
-    
-    for (let i = 1; i < compatibleSites.length; i++) {
-      const site = compatibleSites[i];
-      const distance = calculateDistance(
-        location.lat, location.lng, 
-        site.location.lat, site.location.lng
-      );
-      
-      if (distance < minDistance) {
-        minDistance = distance;
-        closestSite = site;
-      }
-    }
-    
-    return closestSite;
-  };
-
-  // Compute routes with optimization
   const createRoute = async (
     collectorId: string,
     requestIds: string[],
     startTime: Date
   ): Promise<Route> => {
-    return new Promise((resolve) => {
-      // Simulate API delay for route calculation
-      setTimeout(() => {
-        // Get the collector
-        const collector = mockData.collectors.find(c => c.id === collectorId);
-        if (!collector) throw new Error('Collector not found');
-        
-        // Get all the requests
-        const requestsToRoute = mockData.requests.filter(r => requestIds.includes(r.id));
-        if (requestsToRoute.length === 0) throw new Error('No valid requests found');
-        
-        // Calculate route duration (simplified)
-        const averageTimePerStop = 30; // minutes
-        const averageDrivingTime = 15; // minutes between stops
-        
-        // Create route stops
-        const stops: RouteStop[] = requestsToRoute.map((request, index) => {
-          // Calculate estimated arrival time (simplified)
-          const estimatedArrival = new Date(startTime);
-          estimatedArrival.setMinutes(
-            estimatedArrival.getMinutes() + index * (averageTimePerStop + averageDrivingTime)
-          );
-          
-          return {
-            requestId: request.id,
-            order: index + 1,
-            estimatedArrival,
-            status: 'pending'
-          };
-        });
-        
-        // Calculate the total distance and duration
-        const totalDuration = stops.length * (averageTimePerStop + averageDrivingTime);
-        const averageSpeedKmh = 30; // km/h in urban areas
-        const totalDistance = (totalDuration / 60) * averageSpeedKmh;
-        
-        // Determine end location (last pickup)
-        const lastRequest = requestsToRoute[requestsToRoute.length - 1];
-        const lastLocation = lastRequest.location;
-        
-        // Determine waste types to dispose
-        const allWasteTypes = requestsToRoute.flatMap(r => r.wasteType);
-        const uniqueWasteTypes = [...new Set(allWasteTypes)] as WasteType[];
-        
-        // Find best disposal site
-        const bestDisposalSite = findBestDisposalSite(uniqueWasteTypes, lastLocation);
-        
-        // Calculate end time
-        const endTime = new Date(startTime);
-        endTime.setMinutes(endTime.getMinutes() + totalDuration + 30); // Add 30 min for disposal site
-        
-        // Create the new route
-        const newRoute: Route = {
-          id: `route-${Date.now()}`,
-          collectorId,
-          stops,
-          disposalSiteId: bestDisposalSite.id,
-          distance: parseFloat(totalDistance.toFixed(1)),
-          duration: totalDuration,
-          startTime,
-          endTime,
-          status: 'scheduled'
-        };
-        
-        setRoutes(prev => [...prev, newRoute]);
-        resolve(newRoute);
-      }, 1000);
-    });
+    try {
+      const payload = {
+        requestIds,
+        collectorId,
+        startTime: startTime.toISOString()
+      };
+
+      const response = await fetch('/api/compute_route', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(payload)
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to create route');
+      }
+
+      const result = await response.json();
+      
+      // Transform the response to match our Route interface
+      const newRoute: Route = {
+        id: result.route.id,
+        collectorId: result.route.collector_id,
+        stops: result.stops.map((stop: any) => ({
+          requestId: stop.request_id,
+          order: stop.stop_order,
+          estimatedArrival: new Date(stop.estimated_arrival),
+          status: stop.status
+        })),
+        disposalSiteId: result.route.disposal_site_id,
+        distance: result.route.distance,
+        duration: result.route.duration,
+        startTime: new Date(result.route.start_time),
+        endTime: new Date(result.route.end_time),
+        status: result.route.status
+      };
+
+      setRoutes(prev => [...prev, newRoute]);
+      return newRoute;
+    } catch (error) {
+      throw error;
+    }
   };
 
-  // Update route status
   const updateRouteStatus = async (
     routeId: string, 
     status: Route['status']
   ): Promise<Route> => {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const routeIndex = routes.findIndex(r => r.id === routeId);
-        if (routeIndex === -1) {
-          reject(new Error('Route not found'));
-          return;
-        }
-        
-        const updatedRoute = { ...routes[routeIndex], status };
-        const newRoutes = [...routes];
-        newRoutes[routeIndex] = updatedRoute;
-        
-        setRoutes(newRoutes);
-        resolve(updatedRoute);
-      }, 300);
-    });
+    try {
+      const response = await fetch('/api/route/confirm', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ route_id: routeId })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update route status');
+      }
+
+      // Update local state
+      const updatedRoute = routes.find(r => r.id === routeId);
+      if (updatedRoute) {
+        const newRoute = { ...updatedRoute, status };
+        setRoutes(prev => prev.map(r => r.id === routeId ? newRoute : r));
+        return newRoute;
+      }
+      
+      throw new Error('Route not found');
+    } catch (error) {
+      throw error;
+    }
   };
 
-  // Update a stop's status within a route
   const updateStopStatus = async (
     routeId: string,
     requestId: string,
     status: RouteStop['status']
   ): Promise<Route> => {
-    return new Promise((resolve, reject) => {
-      setTimeout(() => {
-        const routeIndex = routes.findIndex(r => r.id === routeId);
-        if (routeIndex === -1) {
-          reject(new Error('Route not found'));
-          return;
+    try {
+      // Find the stop ID (in a real implementation, you'd have this)
+      const route = routes.find(r => r.id === routeId);
+      const stop = route?.stops.find(s => s.requestId === requestId);
+      
+      if (!stop) {
+        throw new Error('Stop not found');
+      }
+
+      // For now, we'll use the requestId as stopId since we don't have the actual stop ID
+      const response = await fetch(`/api/route/stops/${requestId}/complete`, {
+        method: 'PATCH',
+        headers: {
+          'Content-Type': 'application/json'
         }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to update stop status');
+      }
+
+      // Update local state
+      if (route) {
+        const updatedStops = route.stops.map(s => 
+          s.requestId === requestId ? { ...s, status } : s
+        );
         
-        const route = routes[routeIndex];
-        const stopIndex = route.stops.findIndex(s => s.requestId === requestId);
-        if (stopIndex === -1) {
-          reject(new Error('Stop not found in route'));
-          return;
-        }
+        // Check if all stops are completed
+        const allCompleted = updatedStops.every(s => s.status === 'completed' || s.status === 'skipped');
+        const newStatus = allCompleted ? 'completed' : route.status;
         
-        // Update the stop
-        const newStops = [...route.stops];
-        newStops[stopIndex] = { ...newStops[stopIndex], status };
+        const updatedRoute = { 
+          ...route, 
+          stops: updatedStops,
+          status: newStatus
+        };
         
-        // Create updated route
-        const updatedRoute = { ...route, stops: newStops };
-        
-        // Check if all stops are completed/skipped and update route status if needed
-        const allStopsHandled = newStops.every(s => s.status === 'completed' || s.status === 'skipped');
-        if (allStopsHandled && updatedRoute.status === 'in_progress') {
-          updatedRoute.status = 'completed';
-        }
-        
-        // Update routes state
-        const newRoutes = [...routes];
-        newRoutes[routeIndex] = updatedRoute;
-        setRoutes(newRoutes);
-        
-        resolve(updatedRoute);
-      }, 300);
-    });
+        setRoutes(prev => prev.map(r => r.id === routeId ? updatedRoute : r));
+        return updatedRoute;
+      }
+      
+      throw new Error('Route not found');
+    } catch (error) {
+      throw error;
+    }
   };
 
   const getDisposalSites = () => {
     return disposalSites;
   };
 
+  const refreshRoutes = async () => {
+    await fetchRoutes();
+  };
+
+  const refreshDisposalSites = async () => {
+    await fetchDisposalSites();
+  };
+
   const value = {
     routes,
+    disposalSites,
+    isLoading,
+    error,
     getRouteById,
     getRoutesByCollectorId,
     createRoute,
     updateRouteStatus,
     updateStopStatus,
     getDisposalSites,
-    findBestDisposalSite
+    refreshRoutes,
+    refreshDisposalSites
   };
 
   return <RouteContext.Provider value={value}>{children}</RouteContext.Provider>;

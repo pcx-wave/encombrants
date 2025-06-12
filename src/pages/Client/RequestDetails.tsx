@@ -6,14 +6,17 @@ import Button from '../../components/common/Button';
 import WasteTypeIcon from '../../components/common/WasteTypeIcon';
 import Map from '../../components/Map';
 import { PickupRequest, Proposal } from '../../types';
+import { useRequest } from '../../contexts/RequestContext';
 
 const RequestDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const { acceptProposal, rejectProposal, cancelRequest } = useRequest();
   const [request, setRequest] = useState<PickupRequest | null>(null);
   const [proposals, setProposals] = useState<Proposal[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [actionLoading, setActionLoading] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRequestDetails = async () => {
@@ -30,8 +33,45 @@ const RequestDetails: React.FC = () => {
         const requestData = await requestResponse.json();
         const proposalsData = await proposalsResponse.json();
 
-        setRequest(requestData);
-        setProposals(proposalsData);
+        // Transform request data
+        const transformedRequest: PickupRequest = {
+          id: requestData.id,
+          clientId: requestData.client_id,
+          status: requestData.status,
+          wasteType: requestData.waste_types,
+          volume: requestData.volume,
+          weight: requestData.weight,
+          photos: requestData.photos || [],
+          location: {
+            address: requestData.location_address,
+            lat: requestData.location_lat,
+            lng: requestData.location_lng
+          },
+          availabilityWindows: (requestData.availability_windows || []).map((window: any) => ({
+            start: new Date(window.start_time),
+            end: new Date(window.end_time)
+          })),
+          description: requestData.description,
+          createdAt: new Date(requestData.created_at),
+          proposals: []
+        };
+
+        // Transform proposals data
+        const transformedProposals: Proposal[] = proposalsData.map((proposal: any) => ({
+          id: proposal.id,
+          requestId: proposal.request_id,
+          collectorId: proposal.collector_id,
+          price: proposal.price,
+          scheduledTime: {
+            start: new Date(proposal.scheduled_start),
+            end: new Date(proposal.scheduled_end)
+          },
+          status: proposal.status,
+          createdAt: new Date(proposal.created_at)
+        }));
+
+        setRequest(transformedRequest);
+        setProposals(transformedProposals);
       } catch (error) {
         setError('Failed to load request details');
         console.error('Error fetching request details:', error);
@@ -40,8 +80,63 @@ const RequestDetails: React.FC = () => {
       }
     };
 
-    fetchRequestDetails();
+    if (id) {
+      fetchRequestDetails();
+    }
   }, [id]);
+
+  const handleAcceptProposal = async (proposalId: string) => {
+    try {
+      setActionLoading(`accept-${proposalId}`);
+      await acceptProposal(proposalId);
+      
+      // Refresh the page data
+      window.location.reload();
+    } catch (error) {
+      console.error('Error accepting proposal:', error);
+      setError(error instanceof Error ? error.message : 'Failed to accept proposal');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleRejectProposal = async (proposalId: string) => {
+    try {
+      setActionLoading(`reject-${proposalId}`);
+      await rejectProposal(proposalId);
+      
+      // Update local state
+      setProposals(prev => 
+        prev.map(p => 
+          p.id === proposalId 
+            ? { ...p, status: 'rejected' as const }
+            : p
+        )
+      );
+    } catch (error) {
+      console.error('Error rejecting proposal:', error);
+      setError(error instanceof Error ? error.message : 'Failed to reject proposal');
+    } finally {
+      setActionLoading(null);
+    }
+  };
+
+  const handleCancelRequest = async () => {
+    if (!request) return;
+    
+    try {
+      setActionLoading('cancel-request');
+      await cancelRequest(request.id);
+      
+      // Update local state
+      setRequest(prev => prev ? { ...prev, status: 'cancelled' } : null);
+    } catch (error) {
+      console.error('Error cancelling request:', error);
+      setError(error instanceof Error ? error.message : 'Failed to cancel request');
+    } finally {
+      setActionLoading(null);
+    }
+  };
 
   if (isLoading) {
     return (
@@ -103,6 +198,8 @@ const RequestDetails: React.FC = () => {
                   ? 'bg-blue-100 text-blue-800'
                   : request.status === 'completed'
                   ? 'bg-green-100 text-green-800'
+                  : request.status === 'cancelled'
+                  ? 'bg-red-100 text-red-800'
                   : 'bg-gray-100 text-gray-800'
               }`}>
                 {request.status.charAt(0).toUpperCase() + request.status.slice(1)}
@@ -210,13 +307,15 @@ const RequestDetails: React.FC = () => {
                       </p>
                     </div>
 
-                    {proposal.status === 'pending' && (
+                    {proposal.status === 'pending' && request.status === 'pending' && (
                       <div className="flex space-x-2">
                         <Button
                           size="sm"
                           variant="success"
                           fullWidth
-                          onClick={() => {/* TODO: Accept proposal */}}
+                          onClick={() => handleAcceptProposal(proposal.id)}
+                          isLoading={actionLoading === `accept-${proposal.id}`}
+                          disabled={!!actionLoading}
                         >
                           Accept
                         </Button>
@@ -224,7 +323,9 @@ const RequestDetails: React.FC = () => {
                           size="sm"
                           variant="danger"
                           fullWidth
-                          onClick={() => {/* TODO: Reject proposal */}}
+                          onClick={() => handleRejectProposal(proposal.id)}
+                          isLoading={actionLoading === `reject-${proposal.id}`}
+                          disabled={!!actionLoading}
                         >
                           Reject
                         </Button>
@@ -238,9 +339,11 @@ const RequestDetails: React.FC = () => {
 
           {request.status === 'pending' && (
             <Button
-              variant="outline"
+              variant="danger"
               fullWidth
-              onClick={() => {/* TODO: Cancel request */}}
+              onClick={handleCancelRequest}
+              isLoading={actionLoading === 'cancel-request'}
+              disabled={!!actionLoading}
             >
               Cancel Request
             </Button>
