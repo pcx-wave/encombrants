@@ -6,34 +6,45 @@ from .supabase_utils import supabase_request
 def process_data(data):
     return {"processed": True, "input": data}
 
-def get_current_user_profile():
+def get_current_user_profile(jwt_token, user_data):
     """Get current authenticated user profile"""
     try:
-        # Get Authorization header
-        auth_header = request.headers.get('Authorization')
-        if not auth_header or not auth_header.startswith('Bearer '):
-            return jsonify({"error": "Authorization header required"}), 401
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
         
-        token = auth_header.split(' ')[1]
+        # Fetch user profile from Supabase using authenticated request
+        response = supabase_request(
+            "GET", 
+            "users",
+            params={"select": "*", "id": f"eq.{user_id}"},
+            jwt_token=jwt_token
+        )
+        response.raise_for_status()
+        users = response.json()
         
-        # For now, we'll use a simple approach - in production you'd verify the JWT token
-        # and extract the user ID from it. Here we'll assume the token contains user info
-        # This is a simplified implementation
+        if not users:
+            return jsonify({"error": "User profile not found"}), 404
         
-        # You would typically decode the JWT token here to get the user ID
-        # For now, we'll return a mock response
+        user = users[0]
         return jsonify({
-            "error": "User profile endpoint not fully implemented yet"
-        }), 501
+            "id": user["id"],
+            "email": user["email"],
+            "name": user["name"],
+            "type": user["type"],
+            "phone": user.get("phone"),
+            "address": user.get("address"),
+            "created_at": user["created_at"]
+        }), 200
         
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def get_best_disposal_site(waste_types, last_location_lat, last_location_lng):
+def get_best_disposal_site(waste_types, last_location_lat, last_location_lng, jwt_token):
     """Find the best disposal site based on waste types and location"""
     try:
         # Get all disposal sites
-        response = supabase_request("GET", "disposal_sites")
+        response = supabase_request("GET", "disposal_sites", jwt_token=jwt_token)
         response.raise_for_status()
         sites = response.json()
         
@@ -72,11 +83,15 @@ def get_best_disposal_site(waste_types, last_location_lat, last_location_lng):
         print(f"Error finding best disposal site: {e}")
         return None
 
-def create_request(data):
+def create_request(data, jwt_token, user_data):
     try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
         # Rename keys to match Supabase schema
         request_data = {
-            "client_id": data.get("clientId"),
+            "client_id": user_id,  # Use authenticated user ID
             "status": data.get("status", "pending"),
             "waste_types": data.get("wasteType"),
             "volume": data.get("volume"),
@@ -88,7 +103,7 @@ def create_request(data):
             "description": data.get("description")
         }
         
-        response = supabase_request("POST", "requests", request_data)
+        response = supabase_request("POST", "requests", request_data, jwt_token=jwt_token)
         response.raise_for_status()
         request_result = response.json()[0]
         
@@ -100,56 +115,66 @@ def create_request(data):
                 "start_time": window["start"],
                 "end_time": window["end"]
             }
-            supabase_request("POST", "availability_windows", window_data)
+            supabase_request("POST", "availability_windows", window_data, jwt_token=jwt_token)
         
         return jsonify({"status": "created", "data": request_result}), 201
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def get_requests(request_id=None):
+def get_requests(jwt_token, user_data):
     try:
-        if request_id:
-            # Get specific request with availability windows
-            response = supabase_request(
-                "GET", 
-                "requests",
-                params={
-                    "select": "*,availability_windows(*)",
-                    "id": f"eq.{request_id}"
-                }
-            )
-            response.raise_for_status()
-            requests_data = response.json()
-            if requests_data:
-                return jsonify(requests_data[0]), 200
-            else:
-                return jsonify({"error": "Request not found"}), 404
-        else:
-            # Get all requests with availability windows
-            response = supabase_request(
-                "GET", 
-                "requests",
-                params={"select": "*,availability_windows(*)"}
-            )
-            response.raise_for_status()
-            return jsonify(response.json()), 200
+        # Get all requests with availability windows
+        response = supabase_request(
+            "GET", 
+            "requests",
+            params={"select": "*,availability_windows(*)"},
+            jwt_token=jwt_token
+        )
+        response.raise_for_status()
+        return jsonify(response.json()), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def cancel_request(request_id):
+def get_request_by_id(request_id, jwt_token, user_data):
+    try:
+        # Get specific request with availability windows
+        response = supabase_request(
+            "GET", 
+            "requests",
+            params={
+                "select": "*,availability_windows(*)",
+                "id": f"eq.{request_id}"
+            },
+            jwt_token=jwt_token
+        )
+        response.raise_for_status()
+        requests_data = response.json()
+        if requests_data:
+            return jsonify(requests_data[0]), 200
+        else:
+            return jsonify({"error": "Request not found"}), 404
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def cancel_request(request_id, jwt_token, user_data):
     try:
         response = supabase_request(
             "PATCH",
             f"requests?id=eq.{request_id}",
-            {"status": "cancelled"}
+            {"status": "cancelled"},
+            jwt_token=jwt_token
         )
         response.raise_for_status()
         return jsonify({"status": "cancelled"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def submit_proposal(data):
+def submit_proposal(data, jwt_token, user_data):
     try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
         # Validate required fields
         required_fields = ["requestId", "price", "scheduledStart", "scheduledEnd"]
         missing_fields = [field for field in required_fields if not data.get(field)]
@@ -170,14 +195,14 @@ def submit_proposal(data):
         # Create proposal
         proposal_data = {
             "request_id": data["requestId"],
-            "collector_id": data.get("collectorId"),  # Will be set by RLS
+            "collector_id": user_id,  # Use authenticated user ID
             "price": price,
             "scheduled_start": data["scheduledStart"],
             "scheduled_end": data["scheduledEnd"],
             "status": "pending"
         }
 
-        response = supabase_request("POST", "proposals", proposal_data)
+        response = supabase_request("POST", "proposals", proposal_data, jwt_token=jwt_token)
         response.raise_for_status()
         
         return jsonify({
@@ -187,7 +212,7 @@ def submit_proposal(data):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def get_proposals(request_id):
+def get_proposals(request_id, jwt_token, user_data):
     try:
         response = supabase_request(
             "GET",
@@ -195,20 +220,22 @@ def get_proposals(request_id):
             params={
                 "select": "*,collector:collectors(*)",
                 "request_id": f"eq.{request_id}"
-            }
+            },
+            jwt_token=jwt_token
         )
         response.raise_for_status()
         return jsonify(response.json()), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def accept_proposal(proposal_id):
+def accept_proposal(proposal_id, jwt_token, user_data):
     try:
         # Update proposal status to accepted
         response = supabase_request(
             "PATCH",
             f"proposals?id=eq.{proposal_id}",
-            {"status": "accepted"}
+            {"status": "accepted"},
+            jwt_token=jwt_token
         )
         response.raise_for_status()
         
@@ -219,7 +246,8 @@ def accept_proposal(proposal_id):
             params={
                 "select": "request_id",
                 "id": f"eq.{proposal_id}"
-            }
+            },
+            jwt_token=jwt_token
         )
         proposal_response.raise_for_status()
         proposal_data = proposal_response.json()
@@ -231,37 +259,44 @@ def accept_proposal(proposal_id):
             supabase_request(
                 "PATCH",
                 f"requests?id=eq.{request_id}",
-                {"status": "matched"}
+                {"status": "matched"},
+                jwt_token=jwt_token
             )
             
             # Reject all other proposals for this request
             supabase_request(
                 "PATCH",
                 f"proposals?request_id=eq.{request_id}&id=neq.{proposal_id}",
-                {"status": "rejected"}
+                {"status": "rejected"},
+                jwt_token=jwt_token
             )
         
         return jsonify({"status": "accepted"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def reject_proposal(proposal_id):
+def reject_proposal(proposal_id, jwt_token, user_data):
     try:
         response = supabase_request(
             "PATCH",
             f"proposals?id=eq.{proposal_id}",
-            {"status": "rejected"}
+            {"status": "rejected"},
+            jwt_token=jwt_token
         )
         response.raise_for_status()
         return jsonify({"status": "rejected"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def compute_route(data):
+def compute_route(data, jwt_token, user_data):
     """
     Compute an optimized route for the given request IDs using OpenRouteService
     """
     try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
         request_ids = data.get("requestIds", [])
         if not request_ids:
             return jsonify({"error": "No request IDs provided"}), 400
@@ -273,7 +308,8 @@ def compute_route(data):
             params={
                 "select": "id,location_lat,location_lng,waste_types",
                 "id": f"in.({','.join(request_ids)})"
-            }
+            },
+            jwt_token=jwt_token
         )
         locations_response.raise_for_status()
         requests = locations_response.json()
@@ -321,7 +357,8 @@ def compute_route(data):
         best_disposal_site = get_best_disposal_site(
             unique_waste_types,
             last_request["location_lat"],
-            last_request["location_lng"]
+            last_request["location_lng"],
+            jwt_token
         )
 
         if not best_disposal_site:
@@ -329,7 +366,7 @@ def compute_route(data):
 
         # Create route in database
         route_data_db = {
-            "collector_id": data.get("collectorId"),  # Will be set by RLS
+            "collector_id": user_id,  # Use authenticated user ID
             "disposal_site_id": best_disposal_site["id"],
             "distance": round(total_distance, 1),
             "duration": round(total_duration),
@@ -338,7 +375,7 @@ def compute_route(data):
             "status": "scheduled"
         }
 
-        route_response = supabase_request("POST", "routes", route_data_db)
+        route_response = supabase_request("POST", "routes", route_data_db, jwt_token=jwt_token)
         route_response.raise_for_status()
         route = route_response.json()[0]
 
@@ -353,7 +390,7 @@ def compute_route(data):
                 "status": "pending"
             })
 
-        stops_response = supabase_request("POST", "route_stops", stops_data)
+        stops_response = supabase_request("POST", "route_stops", stops_data, jwt_token=jwt_token)
         stops_response.raise_for_status()
 
         return jsonify({
@@ -366,7 +403,7 @@ def compute_route(data):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def confirm_route(data):
+def confirm_route(data, jwt_token, user_data):
     try:
         route_id = data.get("route_id")
         if not route_id:
@@ -376,7 +413,8 @@ def confirm_route(data):
         response = supabase_request(
             "PATCH",
             f"routes?id=eq.{route_id}",
-            {"status": "in_progress"}
+            {"status": "in_progress"},
+            jwt_token=jwt_token
         )
         response.raise_for_status()
 
@@ -384,13 +422,14 @@ def confirm_route(data):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def complete_route_stop(stop_id):
+def complete_route_stop(stop_id, jwt_token, user_data):
     try:
         # Update route stop status
         response = supabase_request(
             "PATCH",
             f"route_stops?id=eq.{stop_id}",
-            {"status": "completed"}
+            {"status": "completed"},
+            jwt_token=jwt_token
         )
         response.raise_for_status()
 
@@ -401,7 +440,8 @@ def complete_route_stop(stop_id):
             params={
                 "select": "route_id",
                 "id": f"eq.{stop_id}"
-            }
+            },
+            jwt_token=jwt_token
         )
         stop_response.raise_for_status()
         stop_data = stop_response.json()
@@ -416,7 +456,8 @@ def complete_route_stop(stop_id):
                 params={
                     "select": "status",
                     "route_id": f"eq.{route_id}"
-                }
+                },
+                jwt_token=jwt_token
             )
             all_stops_response.raise_for_status()
             all_stops = all_stops_response.json()
@@ -426,15 +467,20 @@ def complete_route_stop(stop_id):
                 supabase_request(
                     "PATCH",
                     f"routes?id=eq.{route_id}",
-                    {"status": "completed"}
+                    {"status": "completed"},
+                    jwt_token=jwt_token
                 )
 
         return jsonify({"status": "completed"}), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def register_deposit(data):
+def register_deposit(data, jwt_token, user_data):
     try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
         # Validate required fields
         required_fields = ["name", "address", "lat", "lng", "acceptedWasteTypes"]
         missing_fields = [field for field in required_fields if not data.get(field)]
@@ -453,16 +499,16 @@ def register_deposit(data):
             "accepted_waste_types": data["acceptedWasteTypes"]
         }
 
-        response = supabase_request("POST", "disposal_sites", deposit_data)
+        response = supabase_request("POST", "disposal_sites", deposit_data, jwt_token=jwt_token)
         response.raise_for_status()
         
         # Create deposit settings if payment is enabled
         if data.get("paymentEnabled"):
             settings_data = {
-                "deposit_id": response.json()[0]["id"],
+                "deposit_id": user_id,  # Use authenticated user ID
                 "payment_enabled": True
             }
-            settings_response = supabase_request("POST", "deposit_settings", settings_data)
+            settings_response = supabase_request("POST", "deposit_settings", settings_data, jwt_token=jwt_token)
             settings_response.raise_for_status()
 
         return jsonify({
@@ -472,14 +518,15 @@ def register_deposit(data):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
-def get_deposits():
+def get_deposits(jwt_token, user_data):
     try:
         response = supabase_request(
             "GET",
             "disposal_sites",
             params={
                 "select": "*,deposit_settings(*)"
-            }
+            },
+            jwt_token=jwt_token
         )
         response.raise_for_status()
         return jsonify(response.json()), 200

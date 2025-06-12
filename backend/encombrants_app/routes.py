@@ -3,6 +3,7 @@ from .services import (
     process_data,
     create_request,
     get_requests,
+    get_request_by_id,
     submit_proposal,
     get_proposals,
     accept_proposal,
@@ -15,6 +16,7 @@ from .services import (
     register_deposit,
     get_deposits
 )
+from .supabase_utils import require_auth
 
 main = Blueprint('main', __name__)
 
@@ -44,121 +46,163 @@ def process():
     return jsonify(result)
 
 @main.route('/api/me', methods=['GET', 'OPTIONS'])
-def api_get_current_user():
+@require_auth
+def api_get_current_user(**kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return get_current_user_profile()
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return get_current_user_profile(jwt_token, user_data)
 
 @main.route('/api/requests', methods=['POST', 'OPTIONS'])
-def api_create_request():
+@require_auth
+def api_create_request(**kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
     data = request.get_json()
-    return create_request(data)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return create_request(data, jwt_token, user_data)
 
 @main.route('/api/requests', methods=['GET', 'OPTIONS'])
-def api_get_requests():
+@require_auth
+def api_get_requests(**kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return get_requests()
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return get_requests(jwt_token, user_data)
 
 @main.route('/api/requests/<request_id>', methods=['GET', 'OPTIONS'])
-def api_get_request(request_id):
+@require_auth
+def api_get_request(request_id, **kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return get_requests(request_id)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return get_request_by_id(request_id, jwt_token, user_data)
 
 @main.route('/api/requests/<request_id>/cancel', methods=['PATCH', 'OPTIONS'])
-def api_cancel_request(request_id):
+@require_auth
+def api_cancel_request(request_id, **kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return cancel_request(request_id)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return cancel_request(request_id, jwt_token, user_data)
 
 @main.route('/api/proposals', methods=['POST', 'OPTIONS'])
-def api_submit_proposal():
+@require_auth
+def api_submit_proposal(**kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
     data = request.get_json()
-    return submit_proposal(data)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return submit_proposal(data, jwt_token, user_data)
 
 @main.route('/api/proposals/<request_id>', methods=['GET', 'OPTIONS'])
-def api_get_proposals(request_id):
+@require_auth
+def api_get_proposals(request_id, **kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return get_proposals(request_id)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return get_proposals(request_id, jwt_token, user_data)
 
 @main.route('/api/proposals/<proposal_id>/accept', methods=['POST', 'OPTIONS'])
-def api_accept_proposal(proposal_id):
+@require_auth
+def api_accept_proposal(proposal_id, **kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return accept_proposal(proposal_id)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return accept_proposal(proposal_id, jwt_token, user_data)
 
 @main.route('/api/proposals/<proposal_id>/reject', methods=['POST', 'OPTIONS'])
-def api_reject_proposal(proposal_id):
+@require_auth
+def api_reject_proposal(proposal_id, **kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return reject_proposal(proposal_id)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return reject_proposal(proposal_id, jwt_token, user_data)
 
 @main.route('/api/compute_route', methods=['POST', 'OPTIONS'])
-def api_compute_route():
+@require_auth
+def api_compute_route(**kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
     data = request.get_json()
-    return compute_route(data)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return compute_route(data, jwt_token, user_data)
 
 @main.route('/api/route/confirm', methods=['POST', 'OPTIONS'])
-def api_confirm_route():
+@require_auth
+def api_confirm_route(**kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
     data = request.get_json()
-    return confirm_route(data)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return confirm_route(data, jwt_token, user_data)
 
 @main.route('/api/route/stops/<stop_id>/complete', methods=['PATCH', 'OPTIONS'])
-def api_complete_route_stop(stop_id):
+@require_auth
+def api_complete_route_stop(stop_id, **kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return complete_route_stop(stop_id)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return complete_route_stop(stop_id, jwt_token, user_data)
 
 @main.route('/api/deposits/register', methods=['POST', 'OPTIONS'])
-def api_register_deposit():
+@require_auth
+def api_register_deposit(**kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
     data = request.get_json()
-    return register_deposit(data)
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return register_deposit(data, jwt_token, user_data)
 
 @main.route('/api/deposits', methods=['GET', 'OPTIONS'])
-def api_get_deposits():
+@require_auth
+def api_get_deposits(**kwargs):
     if request.method == 'OPTIONS':
         response = make_response()
         return add_cors_headers(response)
     
-    return get_deposits()
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return get_deposits(jwt_token, user_data)
     
 @main.route('/api/test_supabase')
 def test_supabase():
