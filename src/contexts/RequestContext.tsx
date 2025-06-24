@@ -37,7 +37,24 @@ export const RequestProvider: React.FC<RequestProviderProps> = ({ children }) =>
   const [requests, setRequests] = useState<PickupRequest[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { currentUser } = useAuth();
+  const { currentUser, session } = useAuth();
+
+  const getApiUrl = (endpoint: string) => {
+    const baseUrl = import.meta.env.VITE_BACKEND_API_URL || 'http://localhost:5000';
+    return `${baseUrl}${endpoint}`;
+  };
+
+  const getAuthHeaders = () => {
+    const headers: Record<string, string> = {
+      'Content-Type': 'application/json'
+    };
+    
+    if (session?.access_token) {
+      headers['Authorization'] = `Bearer ${session.access_token}`;
+    }
+    
+    return headers;
+  };
 
   // Transform backend data to frontend format
   const transformRequest = (backendRequest: any): PickupRequest => {
@@ -69,7 +86,10 @@ export const RequestProvider: React.FC<RequestProviderProps> = ({ children }) =>
       setIsLoading(true);
       setError(null);
       
-      const response = await fetch('/api/requests');
+      const response = await fetch(getApiUrl('/api/requests'), {
+        headers: getAuthHeaders()
+      });
+      
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -86,8 +106,13 @@ export const RequestProvider: React.FC<RequestProviderProps> = ({ children }) =>
   };
 
   useEffect(() => {
-    fetchRequests();
-  }, []);
+    if (currentUser && session) {
+      fetchRequests();
+    } else {
+      setRequests([]);
+      setIsLoading(false);
+    }
+  }, [currentUser, session]);
 
   const getRequestById = (id: string) => {
     return requests.find(request => request.id === id);
@@ -119,11 +144,9 @@ export const RequestProvider: React.FC<RequestProviderProps> = ({ children }) =>
         description: requestData.description
       };
 
-      const response = await fetch('/api/requests', {
+      const response = await fetch(getApiUrl('/api/requests'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
 
@@ -162,11 +185,9 @@ export const RequestProvider: React.FC<RequestProviderProps> = ({ children }) =>
         scheduledEnd: proposalData.scheduledTime.end.toISOString()
       };
 
-      const response = await fetch('/api/proposals', {
+      const response = await fetch(getApiUrl('/api/proposals'), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        },
+        headers: getAuthHeaders(),
         body: JSON.stringify(payload)
       });
 
@@ -199,11 +220,9 @@ export const RequestProvider: React.FC<RequestProviderProps> = ({ children }) =>
 
   const acceptProposal = async (proposalId: string) => {
     try {
-      const response = await fetch(`/api/proposals/${proposalId}/accept`, {
+      const response = await fetch(getApiUrl(`/api/proposals/${proposalId}/accept`), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: getAuthHeaders()
       });
 
       if (!response.ok) {
@@ -220,11 +239,9 @@ export const RequestProvider: React.FC<RequestProviderProps> = ({ children }) =>
 
   const rejectProposal = async (proposalId: string) => {
     try {
-      const response = await fetch(`/api/proposals/${proposalId}/reject`, {
+      const response = await fetch(getApiUrl(`/api/proposals/${proposalId}/reject`), {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: getAuthHeaders()
       });
 
       if (!response.ok) {
@@ -241,11 +258,9 @@ export const RequestProvider: React.FC<RequestProviderProps> = ({ children }) =>
 
   const cancelRequest = async (requestId: string) => {
     try {
-      const response = await fetch(`/api/requests/${requestId}/cancel`, {
+      const response = await fetch(getApiUrl(`/api/requests/${requestId}/cancel`), {
         method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json'
-        }
+        headers: getAuthHeaders()
       });
 
       if (!response.ok) {
