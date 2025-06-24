@@ -13,6 +13,11 @@ from .services import (
     confirm_route,
     complete_route_stop,
     get_current_user_profile,
+    update_user_profile,
+    get_collector_profile,
+    update_collector_profile,
+    create_payment_intent,
+    confirm_payment,
     register_deposit,
     get_deposits
 )
@@ -55,6 +60,41 @@ def api_get_current_user(**kwargs):
     jwt_token = kwargs.get('jwt_token')
     user_data = kwargs.get('user_data')
     return get_current_user_profile(jwt_token, user_data)
+
+@main.route('/api/me', methods=['PATCH', 'OPTIONS'])
+@require_auth
+def api_update_user_profile(**kwargs):
+    if request.method == 'OPTIONS':
+        response = make_response()
+        return add_cors_headers(response)
+    
+    data = request.get_json()
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return update_user_profile(data, jwt_token, user_data)
+
+@main.route('/api/collector/profile', methods=['GET', 'OPTIONS'])
+@require_auth
+def api_get_collector_profile(**kwargs):
+    if request.method == 'OPTIONS':
+        response = make_response()
+        return add_cors_headers(response)
+    
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return get_collector_profile(jwt_token, user_data)
+
+@main.route('/api/collector/profile', methods=['PATCH', 'OPTIONS'])
+@require_auth
+def api_update_collector_profile(**kwargs):
+    if request.method == 'OPTIONS':
+        response = make_response()
+        return add_cors_headers(response)
+    
+    data = request.get_json()
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return update_collector_profile(data, jwt_token, user_data)
 
 @main.route('/api/requests', methods=['POST', 'OPTIONS'])
 @require_auth
@@ -145,6 +185,30 @@ def api_reject_proposal(proposal_id, **kwargs):
     jwt_token = kwargs.get('jwt_token')
     user_data = kwargs.get('user_data')
     return reject_proposal(proposal_id, jwt_token, user_data)
+
+@main.route('/api/proposals/<proposal_id>/payment-intent', methods=['POST', 'OPTIONS'])
+@require_auth
+def api_create_payment_intent(proposal_id, **kwargs):
+    if request.method == 'OPTIONS':
+        response = make_response()
+        return add_cors_headers(response)
+    
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return create_payment_intent(proposal_id, jwt_token, user_data)
+
+@main.route('/api/proposals/<proposal_id>/confirm-payment', methods=['POST', 'OPTIONS'])
+@require_auth
+def api_confirm_payment(proposal_id, **kwargs):
+    if request.method == 'OPTIONS':
+        response = make_response()
+        return add_cors_headers(response)
+    
+    data = request.get_json()
+    payment_intent_id = data.get('payment_intent_id')
+    jwt_token = kwargs.get('jwt_token')
+    user_data = kwargs.get('user_data')
+    return confirm_payment(proposal_id, payment_intent_id, jwt_token, user_data)
 
 @main.route('/api/compute_route', methods=['POST', 'OPTIONS'])
 @require_auth

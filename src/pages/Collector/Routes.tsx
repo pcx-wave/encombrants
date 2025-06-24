@@ -6,12 +6,10 @@ import Button from '../../components/common/Button';
 import WasteTypeIcon from '../../components/common/WasteTypeIcon';
 import Map from '../../components/Map';
 import { Route, RouteStop, PickupRequest } from '../../types';
-import { useRoute } from '../../contexts/RouteContext';
 
 const CollectorRoutes: React.FC = () => {
   const location = useLocation();
   const navigate = useNavigate();
-  const { updateRouteStatus, updateStopStatus } = useRoute();
   const [currentRoute, setCurrentRoute] = useState<Route | null>(location.state?.route || null);
   const [requests, setRequests] = useState<PickupRequest[]>([]);
   const [isConfirming, setIsConfirming] = useState(false);
@@ -23,9 +21,18 @@ const CollectorRoutes: React.FC = () => {
       if (!currentRoute) return;
 
       try {
+        const token = (await import('../../utils/supabaseClient')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+        const authToken = await token;
+        
+        if (!authToken) {
+          throw new Error('No authentication token');
+        }
+
         const requestIds = currentRoute.stops.map(stop => stop.requestId);
         const promises = requestIds.map(id =>
-          fetch(`/api/requests/${id}`).then(res => res.json())
+          fetch(`/api/requests/${id}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          }).then(res => res.json())
         );
         const requestsData = await Promise.all(promises);
         
@@ -69,8 +76,28 @@ const CollectorRoutes: React.FC = () => {
     setError(null);
 
     try {
-      const updatedRoute = await updateRouteStatus(currentRoute.id, 'in_progress');
-      setCurrentRoute(updatedRoute);
+      const token = (await import('../../utils/supabaseClient')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+      const authToken = await token;
+      
+      if (!authToken) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await fetch('/api/route/confirm', {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ route_id: currentRoute.id })
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to confirm route');
+      }
+
+      setCurrentRoute(prev => prev ? { ...prev, status: 'in_progress' } : null);
     } catch (error) {
       setError(error instanceof Error ? error.message : 'Failed to confirm route');
     } finally {
@@ -85,8 +112,40 @@ const CollectorRoutes: React.FC = () => {
     setError(null);
 
     try {
-      const updatedRoute = await updateStopStatus(currentRoute.id, stop.requestId, 'completed');
-      setCurrentRoute(updatedRoute);
+      const token = (await import('../../utils/supabaseClient')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+      const authToken = await token;
+      
+      if (!authToken) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await fetch(`/api/route/stops/${stop.requestId}/complete`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to complete stop');
+      }
+
+      // Update local state
+      const updatedStops = currentRoute.stops.map(s => 
+        s.requestId === stop.requestId ? { ...s, status: 'completed' as const } : s
+      );
+      
+      // Check if all stops are completed
+      const allCompleted = updatedStops.every(s => s.status === 'completed' || s.status === 'skipped');
+      const newStatus = allCompleted ? 'completed' : currentRoute.status;
+      
+      setCurrentRoute({ 
+        ...currentRoute, 
+        stops: updatedStops,
+        status: newStatus
+      });
     } catch (error) {
       console.error('Failed to complete stop:', error);
       setError('Failed to mark stop as completed');
@@ -268,7 +327,7 @@ const CollectorRoutes: React.FC = () => {
               </Button>
             ) : allStopsCompleted ? (
               <Button variant="success" fullWidth>
-                Complete Route
+                Route Completed
               </Button>
             ) : (
               <Button variant="primary" fullWidth disabled>

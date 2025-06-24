@@ -9,6 +9,7 @@ import Footer from './components/common/Footer';
 import HomePage from './pages/HomePage';
 import LoginPage from './pages/auth/LoginPage';
 import SignUpPage from './pages/auth/SignUpPage';
+import ProfilePage from './pages/ProfilePage';
 import DepositRegister from './pages/Deposit/Register';
 import DepositDashboard from './pages/Deposit/Dashboard';
 import CollectorDashboard from './pages/Collector/Dashboard';
@@ -31,6 +32,16 @@ function App() {
                   <Route path="/" element={<HomePage />} />
                   <Route path="/login" element={<LoginPage />} />
                   <Route path="/signup" element={<SignUpPage />} />
+                  
+                  {/* Profile route - accessible to all authenticated users */}
+                  <Route 
+                    path="/profile" 
+                    element={
+                      <ProtectedRoute>
+                        <ProfilePage />
+                      </ProtectedRoute>
+                    } 
+                  />
                   
                   {/* Deposit routes */}
                   <Route path="/deposit/register" element={<DepositRegister />} />

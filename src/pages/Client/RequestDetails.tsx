@@ -1,29 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import { useParams, useNavigate } from 'react-router-dom';
-import { Package, MapPin, Clock, Euro, ArrowLeft } from 'lucide-react';
+import { Package, MapPin, Clock, Euro, ArrowLeft, CreditCard, User, Star } from 'lucide-react';
 import Card from '../../components/common/Card';
 import Button from '../../components/common/Button';
 import WasteTypeIcon from '../../components/common/WasteTypeIcon';
 import Map from '../../components/Map';
 import { PickupRequest, Proposal } from '../../types';
-import { useRequest } from '../../contexts/RequestContext';
+import { useAuth } from '../../contexts/AuthContext';
+
+interface ProposalWithCollector extends Proposal {
+  collector: {
+    id: string;
+    name: string;
+    email: string;
+    phone?: string;
+    vehicle_type: string;
+    rating: number;
+    completed_jobs: number;
+  };
+}
 
 const RequestDetails: React.FC = () => {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
-  const { acceptProposal, rejectProposal, cancelRequest } = useRequest();
+  const { currentUser } = useAuth();
   const [request, setRequest] = useState<PickupRequest | null>(null);
-  const [proposals, setProposals] = useState<Proposal[]>([]);
+  const [proposals, setProposals] = useState<ProposalWithCollector[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [actionLoading, setActionLoading] = useState<string | null>(null);
+  const [showPayment, setShowPayment] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchRequestDetails = async () => {
       try {
+        const token = (await import('../../utils/supabaseClient')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+        const authToken = await token;
+        
+        if (!authToken) {
+          throw new Error('No authentication token');
+        }
+
         const [requestResponse, proposalsResponse] = await Promise.all([
-          fetch(`/api/requests/${id}`),
-          fetch(`/api/proposals/${id}`)
+          fetch(`/api/requests/${id}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          }),
+          fetch(`/api/proposals/${id}`, {
+            headers: { 'Authorization': `Bearer ${authToken}` }
+          })
         ]);
 
         if (!requestResponse.ok || !proposalsResponse.ok) {
@@ -57,7 +81,7 @@ const RequestDetails: React.FC = () => {
         };
 
         // Transform proposals data
-        const transformedProposals: Proposal[] = proposalsData.map((proposal: any) => ({
+        const transformedProposals: ProposalWithCollector[] = proposalsData.map((proposal: any) => ({
           id: proposal.id,
           requestId: proposal.request_id,
           collectorId: proposal.collector_id,
@@ -67,7 +91,8 @@ const RequestDetails: React.FC = () => {
             end: new Date(proposal.scheduled_end)
           },
           status: proposal.status,
-          createdAt: new Date(proposal.created_at)
+          createdAt: new Date(proposal.created_at),
+          collector: proposal.collector
         }));
 
         setRequest(transformedRequest);
@@ -85,26 +110,86 @@ const RequestDetails: React.FC = () => {
     }
   }, [id]);
 
-  const handleAcceptProposal = async (proposalId: string) => {
+  const handlePayment = async (proposalId: string) => {
     try {
-      setActionLoading(`accept-${proposalId}`);
-      await acceptProposal(proposalId);
+      setActionLoading(`payment-${proposalId}`);
       
+      const token = (await import('../../utils/supabaseClient')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+      const authToken = await token;
+      
+      if (!authToken) {
+        throw new Error('No authentication token');
+      }
+
+      // Create payment intent
+      const paymentResponse = await fetch(`/api/proposals/${proposalId}/payment-intent`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!paymentResponse.ok) {
+        const errorData = await paymentResponse.json();
+        throw new Error(errorData.error || 'Failed to create payment intent');
+      }
+
+      const paymentIntent = await paymentResponse.json();
+      
+      // For demo purposes, simulate successful payment
+      // In production, you would integrate with Stripe Elements here
+      const confirmResponse = await fetch(`/api/proposals/${proposalId}/confirm-payment`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          payment_intent_id: paymentIntent.id
+        })
+      });
+
+      if (!confirmResponse.ok) {
+        const errorData = await confirmResponse.json();
+        throw new Error(errorData.error || 'Failed to confirm payment');
+      }
+
       // Refresh the page data
       window.location.reload();
     } catch (error) {
-      console.error('Error accepting proposal:', error);
-      setError(error instanceof Error ? error.message : 'Failed to accept proposal');
+      console.error('Error processing payment:', error);
+      setError(error instanceof Error ? error.message : 'Failed to process payment');
     } finally {
       setActionLoading(null);
+      setShowPayment(null);
     }
   };
 
   const handleRejectProposal = async (proposalId: string) => {
     try {
       setActionLoading(`reject-${proposalId}`);
-      await rejectProposal(proposalId);
       
+      const token = (await import('../../utils/supabaseClient')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+      const authToken = await token;
+      
+      if (!authToken) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await fetch(`/api/proposals/${proposalId}/reject`, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to reject proposal');
+      }
+
       // Update local state
       setProposals(prev => 
         prev.map(p => 
@@ -126,8 +211,27 @@ const RequestDetails: React.FC = () => {
     
     try {
       setActionLoading('cancel-request');
-      await cancelRequest(request.id);
       
+      const token = (await import('../../utils/supabaseClient')).supabase.auth.getSession().then(({ data }) => data.session?.access_token);
+      const authToken = await token;
+      
+      if (!authToken) {
+        throw new Error('No authentication token');
+      }
+
+      const response = await fetch(`/api/requests/${request.id}/cancel`, {
+        method: 'PATCH',
+        headers: {
+          'Authorization': `Bearer ${authToken}`,
+          'Content-Type': 'application/json'
+        }
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.error || 'Failed to cancel request');
+      }
+
       // Update local state
       setRequest(prev => prev ? { ...prev, status: 'cancelled' } : null);
     } catch (error) {
@@ -196,6 +300,8 @@ const RequestDetails: React.FC = () => {
                   ? 'bg-yellow-100 text-yellow-800'
                   : request.status === 'matched'
                   ? 'bg-blue-100 text-blue-800'
+                  : request.status === 'scheduled'
+                  ? 'bg-purple-100 text-purple-800'
                   : request.status === 'completed'
                   ? 'bg-green-100 text-green-800'
                   : request.status === 'cancelled'
@@ -300,6 +406,28 @@ const RequestDetails: React.FC = () => {
                       </span>
                     </div>
 
+                    {/* Collector Info */}
+                    <div className="bg-gray-50 p-3 rounded-lg">
+                      <div className="flex items-center space-x-3">
+                        <div className="bg-emerald-100 rounded-full p-2">
+                          <User className="w-4 h-4 text-emerald-600" />
+                        </div>
+                        <div className="flex-grow">
+                          <p className="font-medium text-gray-900">{proposal.collector.name}</p>
+                          <div className="flex items-center space-x-2 text-sm text-gray-600">
+                            <span className="capitalize">{proposal.collector.vehicle_type}</span>
+                            <span>•</span>
+                            <div className="flex items-center">
+                              <Star className="w-3 h-3 text-yellow-500 mr-1" />
+                              <span>{proposal.collector.rating}</span>
+                            </div>
+                            <span>•</span>
+                            <span>{proposal.collector.completed_jobs} jobs</span>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+
                     <div className="text-sm text-gray-600">
                       <p className="flex items-center">
                         <Clock className="w-4 h-4 mr-2" />
@@ -308,27 +436,58 @@ const RequestDetails: React.FC = () => {
                     </div>
 
                     {proposal.status === 'pending' && request.status === 'pending' && (
-                      <div className="flex space-x-2">
-                        <Button
-                          size="sm"
-                          variant="success"
-                          fullWidth
-                          onClick={() => handleAcceptProposal(proposal.id)}
-                          isLoading={actionLoading === `accept-${proposal.id}`}
-                          disabled={!!actionLoading}
-                        >
-                          Accept
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="danger"
-                          fullWidth
-                          onClick={() => handleRejectProposal(proposal.id)}
-                          isLoading={actionLoading === `reject-${proposal.id}`}
-                          disabled={!!actionLoading}
-                        >
-                          Reject
-                        </Button>
+                      <div className="space-y-2">
+                        {showPayment === proposal.id ? (
+                          <div className="bg-blue-50 p-4 rounded-lg">
+                            <h4 className="font-medium text-blue-900 mb-2">Confirm Payment</h4>
+                            <p className="text-sm text-blue-700 mb-3">
+                              You're about to pay €{proposal.price} to {proposal.collector.name}
+                            </p>
+                            <div className="flex space-x-2">
+                              <Button
+                                size="sm"
+                                variant="primary"
+                                leftIcon={<CreditCard className="w-4 h-4" />}
+                                onClick={() => handlePayment(proposal.id)}
+                                isLoading={actionLoading === `payment-${proposal.id}`}
+                                disabled={!!actionLoading}
+                              >
+                                Pay Now
+                              </Button>
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                onClick={() => setShowPayment(null)}
+                                disabled={!!actionLoading}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          </div>
+                        ) : (
+                          <div className="flex space-x-2">
+                            <Button
+                              size="sm"
+                              variant="success"
+                              fullWidth
+                              leftIcon={<CreditCard className="w-4 h-4" />}
+                              onClick={() => setShowPayment(proposal.id)}
+                              disabled={!!actionLoading}
+                            >
+                              Accept & Pay
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="danger"
+                              fullWidth
+                              onClick={() => handleRejectProposal(proposal.id)}
+                              isLoading={actionLoading === `reject-${proposal.id}`}
+                              disabled={!!actionLoading}
+                            >
+                              Reject
+                            </Button>
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>

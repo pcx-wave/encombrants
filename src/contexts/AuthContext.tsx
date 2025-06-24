@@ -14,6 +14,7 @@ interface AuthContextType {
   signIn: (email: string, password: string) => Promise<void>;
   signOut: () => Promise<void>;
   updateProfile: (updates: Partial<Omit<AuthUser, 'id' | 'email' | 'role'>>) => Promise<void>;
+  logout: () => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -224,6 +225,10 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     }
   };
 
+  const logout = async () => {
+    await signOut();
+  };
+
   const updateProfile = async (updates: Partial<Omit<AuthUser, 'id' | 'email' | 'role'>>) => {
     if (!currentUser) throw new Error('No user logged in');
 
@@ -252,6 +257,7 @@ export const AuthProvider: React.FC<AuthProviderProps> = ({ children }) => {
     signUp,
     signIn,
     signOut,
+    logout,
     updateProfile
   };
 

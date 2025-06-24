@@ -40,6 +40,109 @@ def get_current_user_profile(jwt_token, user_data):
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
+def update_user_profile(data, jwt_token, user_data):
+    """Update user profile"""
+    try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
+        # Only allow updating specific fields
+        allowed_fields = ['name', 'phone', 'address']
+        update_data = {k: v for k, v in data.items() if k in allowed_fields}
+        
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
+        
+        response = supabase_request(
+            "PATCH",
+            f"users?id=eq.{user_id}",
+            update_data,
+            jwt_token=jwt_token
+        )
+        response.raise_for_status()
+        
+        return jsonify({"status": "updated", "data": update_data}), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def get_collector_profile(jwt_token, user_data):
+    """Get collector profile details"""
+    try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
+        response = supabase_request(
+            "GET",
+            "collectors",
+            params={"select": "*", "id": f"eq.{user_id}"},
+            jwt_token=jwt_token
+        )
+        response.raise_for_status()
+        collectors = response.json()
+        
+        if not collectors:
+            return jsonify({"error": "Collector profile not found"}), 404
+        
+        return jsonify(collectors[0]), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def update_collector_profile(data, jwt_token, user_data):
+    """Update collector profile"""
+    try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
+        # Validate required fields
+        allowed_fields = [
+            'vehicle_type', 'vehicle_capacity_volume', 'vehicle_capacity_weight',
+            'vehicle_license_plate', 'supported_waste_types'
+        ]
+        update_data = {k: v for k, v in data.items() if k in allowed_fields}
+        
+        if not update_data:
+            return jsonify({"error": "No valid fields to update"}), 400
+        
+        # Validate vehicle_type
+        if 'vehicle_type' in update_data:
+            if update_data['vehicle_type'] not in ['van', 'trailer', 'truck']:
+                return jsonify({"error": "Invalid vehicle type"}), 400
+        
+        # Validate capacity values
+        if 'vehicle_capacity_volume' in update_data:
+            try:
+                volume = float(update_data['vehicle_capacity_volume'])
+                if volume <= 0:
+                    return jsonify({"error": "Vehicle capacity volume must be positive"}), 400
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid vehicle capacity volume"}), 400
+        
+        if 'vehicle_capacity_weight' in update_data:
+            try:
+                weight = float(update_data['vehicle_capacity_weight'])
+                if weight <= 0:
+                    return jsonify({"error": "Vehicle capacity weight must be positive"}), 400
+            except (ValueError, TypeError):
+                return jsonify({"error": "Invalid vehicle capacity weight"}), 400
+        
+        response = supabase_request(
+            "PATCH",
+            f"collectors?id=eq.{user_id}",
+            update_data,
+            jwt_token=jwt_token
+        )
+        response.raise_for_status()
+        
+        return jsonify({"status": "updated", "data": update_data}), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
 def get_best_disposal_site(waste_types, last_location_lat, last_location_lng, jwt_token):
     """Find the best disposal site based on waste types and location"""
     try:
@@ -218,13 +321,42 @@ def get_proposals(request_id, jwt_token, user_data):
             "GET",
             "proposals",
             params={
-                "select": "*,collector:collectors(*)",
+                "select": "*,collectors!inner(*,users!inner(name,email,phone))",
                 "request_id": f"eq.{request_id}"
             },
             jwt_token=jwt_token
         )
         response.raise_for_status()
-        return jsonify(response.json()), 200
+        proposals = response.json()
+        
+        # Transform the data to include collector details
+        transformed_proposals = []
+        for proposal in proposals:
+            collector_data = proposal.get('collectors', {})
+            user_data = collector_data.get('users', {})
+            
+            transformed_proposal = {
+                "id": proposal["id"],
+                "request_id": proposal["request_id"],
+                "collector_id": proposal["collector_id"],
+                "price": proposal["price"],
+                "scheduled_start": proposal["scheduled_start"],
+                "scheduled_end": proposal["scheduled_end"],
+                "status": proposal["status"],
+                "created_at": proposal["created_at"],
+                "collector": {
+                    "id": collector_data.get("id"),
+                    "name": user_data.get("name"),
+                    "email": user_data.get("email"),
+                    "phone": user_data.get("phone"),
+                    "vehicle_type": collector_data.get("vehicle_type"),
+                    "rating": collector_data.get("rating"),
+                    "completed_jobs": collector_data.get("completed_jobs")
+                }
+            }
+            transformed_proposals.append(transformed_proposal)
+        
+        return jsonify(transformed_proposals), 200
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -285,6 +417,110 @@ def reject_proposal(proposal_id, jwt_token, user_data):
         )
         response.raise_for_status()
         return jsonify({"status": "rejected"}), 200
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def create_payment_intent(proposal_id, jwt_token, user_data):
+    """Create a Stripe payment intent for a proposal"""
+    try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
+        # Get proposal details
+        proposal_response = supabase_request(
+            "GET",
+            "proposals",
+            params={
+                "select": "*,requests!inner(client_id)",
+                "id": f"eq.{proposal_id}"
+            },
+            jwt_token=jwt_token
+        )
+        proposal_response.raise_for_status()
+        proposals = proposal_response.json()
+        
+        if not proposals:
+            return jsonify({"error": "Proposal not found"}), 404
+        
+        proposal = proposals[0]
+        
+        # Verify the user is the client who owns the request
+        if proposal["requests"]["client_id"] != user_id:
+            return jsonify({"error": "Unauthorized"}), 403
+        
+        # For now, return a mock payment intent
+        # In production, you would integrate with Stripe here
+        payment_intent = {
+            "id": f"pi_mock_{proposal_id}",
+            "client_secret": f"pi_mock_{proposal_id}_secret_mock",
+            "amount": int(proposal["price"] * 100),  # Convert to cents
+            "currency": "eur",
+            "status": "requires_payment_method"
+        }
+        
+        return jsonify(payment_intent), 200
+        
+    except Exception as e:
+        return jsonify({"error": str(e)}), 500
+
+def confirm_payment(proposal_id, payment_intent_id, jwt_token, user_data):
+    """Confirm payment and update proposal status"""
+    try:
+        user_id = user_data.get('sub')
+        if not user_id:
+            return jsonify({"error": "Invalid user token"}), 401
+        
+        # In production, you would verify the payment with Stripe here
+        # For now, we'll simulate a successful payment
+        
+        # Update proposal status to accepted and paid
+        response = supabase_request(
+            "PATCH",
+            f"proposals?id=eq.{proposal_id}",
+            {"status": "accepted"},
+            jwt_token=jwt_token
+        )
+        response.raise_for_status()
+        
+        # Get the proposal to find the request_id
+        proposal_response = supabase_request(
+            "GET",
+            "proposals",
+            params={
+                "select": "request_id",
+                "id": f"eq.{proposal_id}"
+            },
+            jwt_token=jwt_token
+        )
+        proposal_response.raise_for_status()
+        proposal_data = proposal_response.json()
+        
+        if proposal_data:
+            request_id = proposal_data[0]["request_id"]
+            
+            # Update request status to scheduled
+            supabase_request(
+                "PATCH",
+                f"requests?id=eq.{request_id}",
+                {"status": "scheduled"},
+                jwt_token=jwt_token
+            )
+            
+            # Reject all other proposals for this request
+            supabase_request(
+                "PATCH",
+                f"proposals?request_id=eq.{request_id}&id=neq.{proposal_id}",
+                {"status": "rejected"},
+                jwt_token=jwt_token
+            )
+        
+        return jsonify({
+            "status": "payment_confirmed",
+            "proposal_id": proposal_id,
+            "payment_intent_id": payment_intent_id
+        }), 200
+        
     except Exception as e:
         return jsonify({"error": str(e)}), 500
 
@@ -501,6 +737,15 @@ def register_deposit(data, jwt_token, user_data):
 
         response = supabase_request("POST", "disposal_sites", deposit_data, jwt_token=jwt_token)
         response.raise_for_status()
+        
+        # Update user type to deposit
+        user_update_response = supabase_request(
+            "PATCH",
+            f"users?id=eq.{user_id}",
+            {"type": "deposit"},
+            jwt_token=jwt_token
+        )
+        user_update_response.raise_for_status()
         
         # Create deposit settings if payment is enabled
         if data.get("paymentEnabled"):
