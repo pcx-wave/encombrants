@@ -40,7 +40,7 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
   const [disposalSites, setDisposalSites] = useState<DisposalSite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { currentUser } = useAuth();
+  const { currentUser, getAuthHeaders } = useAuth();
 
   // Transform backend route data to frontend format
   const transformRoute = (backendRoute: any): Route => {
@@ -90,7 +90,9 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
 
   const fetchDisposalSites = async () => {
     try {
-      const response = await fetch('/api/deposits');
+      const response = await fetch('/api/deposits', {
+        headers: getAuthHeaders()
+      });
       if (!response.ok) {
         throw new Error(`HTTP error! status: ${response.status}`);
       }
@@ -131,7 +133,8 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
       const response = await fetch('/api/compute_route', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
         },
         body: JSON.stringify(payload)
       });
@@ -176,7 +179,8 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
       const response = await fetch('/api/route/confirm', {
         method: 'POST',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
         },
         body: JSON.stringify({ route_id: routeId })
       });
@@ -218,7 +222,8 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
       const response = await fetch(`/api/route/stops/${requestId}/complete`, {
         method: 'PATCH',
         headers: {
-          'Content-Type': 'application/json'
+          'Content-Type': 'application/json',
+          ...getAuthHeaders()
         }
       });
 
