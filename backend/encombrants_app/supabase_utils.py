@@ -7,8 +7,8 @@ def supabase_request(method, endpoint, data=None, params=None, jwt_token=None):
     """
     Make a request to Supabase with optional JWT authentication
     """
-    base_url = os.getenv("VITE_SUPABASE_URL")
-    api_key = os.getenv("VITE_SUPABASE_ANON_KEY")
+    base_url = os.getenv("VITE_SUPABASE_ENCOMBRANTS_URL")
+    api_key = os.getenv("VITE_SUPABASE_ENCOMBRANTS_KEY") #utiliser anon key
 
     if not base_url or not api_key:
         raise ValueError("Supabase URL or API key not configured.")
@@ -16,16 +16,22 @@ def supabase_request(method, endpoint, data=None, params=None, jwt_token=None):
     url = f"{base_url}/rest/v1/{endpoint}"
     headers = {
         "apikey": api_key,
+        "Authorization": f"Bearer {jwt_token}",  # <== TOUJOURS le token utilisateur ici
         "Content-Type": "application/json",
         "Prefer": "return=representation"
     }
 
+    print("===== Appel à Supabase =====")
+    print("Endpoint:", endpoint)
+    print("Headers envoyés:", headers)
+    print("Params:", params)
+
     # If JWT token is provided, use it for authentication
     # This allows Supabase RLS policies to work correctly
-    if jwt_token:
-        headers["Authorization"] = f"Bearer {jwt_token}"
-    else:
-        headers["Authorization"] = f"Bearer {api_key}"
+#    if jwt_token:
+#        headers["Authorization"] = f"Bearer {jwt_token}"
+#    else:
+#        headers["Authorization"] = f"Bearer {api_key}"
 
     return requests.request(method, url, headers=headers, json=data, params=params)
 
