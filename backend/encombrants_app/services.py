@@ -8,6 +8,11 @@ def process_data(data):
 
 def get_current_user_profile(jwt_token, user_data):
     """Get current authenticated user profile"""
+    print("===== JWT reçu =====")
+    print(jwt_token)
+    print("===== Données décodées =====")
+    print(user_data)
+    
     try:
         user_id = user_data.get('sub')
         if not user_id:
