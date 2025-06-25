@@ -40,7 +40,7 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
   const [disposalSites, setDisposalSites] = useState<DisposalSite[]>([]);
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const { currentUser, getAuthHeaders } = useAuth();
+  const { currentUser } = useAuth();
 
   // Transform backend route data to frontend format
   const transformRoute = (backendRoute: any): Route => {
@@ -90,18 +90,35 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
 
   const fetchDisposalSites = async () => {
     try {
-      const response = await fetch('/api/deposits', {
-        headers: getAuthHeaders()
-      });
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
+      // Mock disposal sites data instead of fetching from API
+      const mockDisposalSites: DisposalSite[] = [
+        {
+          id: '1',
+          name: 'Central Waste Management',
+          location: {
+            address: '123 Industrial Ave, City Center',
+            lat: 45.5017,
+            lng: -73.5673
+          },
+          openingHours: [],
+          acceptedWasteTypes: ['furniture', 'household', 'electronics', 'appliances']
+        },
+        {
+          id: '2',
+          name: 'Green Recycling Center',
+          location: {
+            address: '456 Green St, Eco District',
+            lat: 45.5088,
+            lng: -73.5878
+          },
+          openingHours: [],
+          acceptedWasteTypes: ['electronics', 'appliances', 'hazardous']
+        }
+      ];
       
-      const data = await response.json();
-      const transformedSites = data.map(transformDisposalSite);
-      setDisposalSites(transformedSites);
+      setDisposalSites(mockDisposalSites);
     } catch (err) {
-      console.error('Error fetching disposal sites:', err);
+      console.error('Error setting up disposal sites:', err);
     }
   };
 
@@ -124,44 +141,22 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
     startTime: Date
   ): Promise<Route> => {
     try {
-      const payload = {
-        requestIds,
-        collectorId,
-        startTime: startTime.toISOString()
-      };
-
-      const response = await fetch('/api/compute_route', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify(payload)
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to create route');
-      }
-
-      const result = await response.json();
-      
-      // Transform the response to match our Route interface
+      // Mock route creation for now
       const newRoute: Route = {
-        id: result.route.id,
-        collectorId: result.route.collector_id,
-        stops: result.stops.map((stop: any) => ({
-          requestId: stop.request_id,
-          order: stop.stop_order,
-          estimatedArrival: new Date(stop.estimated_arrival),
-          status: stop.status
+        id: `route-${Date.now()}`,
+        collectorId,
+        stops: requestIds.map((requestId, index) => ({
+          requestId,
+          order: index + 1,
+          estimatedArrival: new Date(startTime.getTime() + (index * 30 * 60 * 1000)), // 30 min intervals
+          status: 'pending'
         })),
-        disposalSiteId: result.route.disposal_site_id,
-        distance: result.route.distance,
-        duration: result.route.duration,
-        startTime: new Date(result.route.start_time),
-        endTime: new Date(result.route.end_time),
-        status: result.route.status
+        disposalSiteId: disposalSites[0]?.id || '1',
+        distance: 15.5,
+        duration: 120,
+        startTime,
+        endTime: new Date(startTime.getTime() + (2 * 60 * 60 * 1000)), // 2 hours later
+        status: 'scheduled'
       };
 
       setRoutes(prev => [...prev, newRoute]);
@@ -176,20 +171,6 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
     status: Route['status']
   ): Promise<Route> => {
     try {
-      const response = await fetch('/api/route/confirm', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        },
-        body: JSON.stringify({ route_id: routeId })
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update route status');
-      }
-
       // Update local state
       const updatedRoute = routes.find(r => r.id === routeId);
       if (updatedRoute) {
@@ -210,26 +191,12 @@ export const RouteProvider: React.FC<RouteProviderProps> = ({ children }) => {
     status: RouteStop['status']
   ): Promise<Route> => {
     try {
-      // Find the stop ID (in a real implementation, you'd have this)
+      // Find the route
       const route = routes.find(r => r.id === routeId);
       const stop = route?.stops.find(s => s.requestId === requestId);
       
       if (!stop) {
         throw new Error('Stop not found');
-      }
-
-      // For now, we'll use the requestId as stopId since we don't have the actual stop ID
-      const response = await fetch(`/api/route/stops/${requestId}/complete`, {
-        method: 'PATCH',
-        headers: {
-          'Content-Type': 'application/json',
-          ...getAuthHeaders()
-        }
-      });
-
-      if (!response.ok) {
-        const errorData = await response.json();
-        throw new Error(errorData.error || 'Failed to update stop status');
       }
 
       // Update local state
